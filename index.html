@@ -1,0 +1,879 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>Cable Stock Take</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one 720px working column for a phone on the store floor. Tabs switch Count / Entries / Summary; save bar sticks to the bottom of the form. Steel-grey ground, copper as the single accent. */
+:root{
+  --bg:#eceff1; --surface:#ffffff; --field:#f6f8f9; --ink:#1a2228; --muted:#5b6872; --line:#d2d9dd;
+  --copper:#a9562a; --on-copper:#ffffff; --copper-soft:#f4e5db;
+  --ok:#2e7a4d; --warn:#8f5b00; --warn-soft:#f6ecd6; --danger:#b3261e; --danger-soft:#f8e2df;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111619; --surface:#192025; --field:#141a1e; --ink:#e4e9ec; --muted:#95a2ab; --line:#2c363d;
+    --copper:#e38c55; --on-copper:#1b0f07; --copper-soft:#3a271c;
+    --ok:#5dbb84; --warn:#e2a840; --warn-soft:#382c15; --danger:#f2786f; --danger-soft:#3b1f1d;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111619; --surface:#192025; --field:#141a1e; --ink:#e4e9ec; --muted:#95a2ab; --line:#2c363d;
+  --copper:#e38c55; --on-copper:#1b0f07; --copper-soft:#3a271c;
+  --ok:#5dbb84; --warn:#e2a840; --warn-soft:#382c15; --danger:#f2786f; --danger-soft:#3b1f1d;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:720px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px;display:flex;flex-direction:column;gap:16px}
+h1,h2,h3{margin:0;font-family:var(--display);font-weight:700;text-wrap:balance}
+p{margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+
+/* header */
+.brand{display:flex;align-items:center;gap:12px}
+.reel{width:40px;height:40px;flex:none;color:var(--copper)}
+.brand h1{font-size:28px;line-height:1;text-transform:uppercase;letter-spacing:.02em}
+.brand .sub{color:var(--muted);font-size:13px;margin-top:3px}
+.countbar{display:flex;flex-direction:column;gap:6px}
+.lbl{font-family:var(--display);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.countrow{display:flex;gap:8px}
+.countrow select{flex:1;min-width:0}
+.meta{color:var(--muted);font-size:13px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pill{display:inline-flex;align-items:center;font-size:12px;font-weight:600;padding:1px 9px;border-radius:999px;border:1px solid currentColor;line-height:1.6}
+.pill.open{color:var(--ok)}
+.pill.closed{color:var(--muted)}
+
+/* controls */
+input[type="text"],input[type="number"],input[type="date"],select,textarea{width:100%;min-height:44px;padding:9px 12px;background:var(--field);border:1px solid var(--line);border-radius:8px;font-size:16px}
+textarea{min-height:72px;resize:vertical}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--copper);outline-offset:1px}
+.btn{min-height:44px;padding:0 16px;border-radius:8px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--copper)}
+.btn.primary{background:var(--copper);border-color:var(--copper);color:var(--on-copper);font-family:var(--display);font-size:18px;letter-spacing:.04em;text-transform:uppercase;padding:0 22px}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.small{min-height:36px;padding:0 12px;font-size:13px}
+.btn.danger{color:var(--danger)}
+.btn.danger[data-armed]{background:var(--danger);border-color:var(--danger);color:var(--surface)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.newcount{padding:16px;display:flex;flex-direction:column;gap:12px}
+.newcount .actions{display:flex;gap:8px;justify-content:flex-end}
+
+/* tabs */
+.tabs{display:flex;border-bottom:1px solid var(--line);gap:4px}
+.tab{flex:1;background:none;border:0;border-bottom:3px solid transparent;padding:10px 4px 8px;font-family:var(--display);font-size:17px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);cursor:pointer;margin-bottom:-1px}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--copper)}
+.tab .n{font-family:var(--mono);font-size:12px;font-weight:500;margin-left:4px;font-variant-numeric:tabular-nums}
+
+.notice{background:var(--warn-soft);color:var(--ink);border-radius:10px;padding:12px 14px;font-size:14px;border:1px solid var(--line)}
+.notice strong{color:var(--warn)}
+
+/* form */
+form.count{overflow:clip}
+fieldset{border:0;margin:0;padding:0;min-width:0}
+.sec{padding:18px 16px;display:flex;flex-direction:column;gap:14px;border-top:1px solid var(--line)}
+.sec:first-child{border-top:0}
+.sec h2{font-size:15px;text-transform:uppercase;letter-spacing:.08em;color:var(--copper)}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field > label,.field > .flabel{font-size:13px;font-weight:600}
+.req{font-weight:400;color:var(--muted);font-size:12px}
+.hint{font-size:12px;color:var(--muted)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.seg label{display:inline-flex;align-items:center;min-height:40px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:var(--field);cursor:pointer;font-size:14px;user-select:none}
+.seg input:checked + label{background:var(--copper);border-color:var(--copper);color:var(--on-copper);font-weight:600}
+.seg input:focus-visible + label{outline:2px solid var(--copper);outline-offset:2px}
+fieldset:disabled .seg label{cursor:not-allowed;opacity:.6}
+.sw{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--sw);border:1px solid var(--line);margin-right:7px;flex:none}
+.tagin{font-family:var(--mono);text-transform:uppercase;letter-spacing:.03em}
+.readout{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 14px;border-radius:10px;background:var(--copper-soft)}
+.readout .k{font-size:12px;text-transform:uppercase;letter-spacing:.08em;font-family:var(--display);font-weight:600;color:var(--muted)}
+.readout .v{font-family:var(--display);font-size:34px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.readout .pct{font-size:13px;color:var(--muted);width:100%}
+.inline-warn{font-size:13px;color:var(--warn);background:var(--warn-soft);padding:8px 12px;border-radius:8px}
+.err{font-size:13px;color:var(--danger);background:var(--danger-soft);padding:8px 12px;border-radius:8px}
+.editing{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;background:var(--copper-soft);font-size:14px}
+.editing b{font-family:var(--mono)}
+.savebar{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.keep{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer}
+.keep input{width:18px;height:18px;accent-color:var(--copper)}
+
+/* entries */
+.listhead{display:flex;gap:8px;align-items:center}
+.listhead input{flex:1;min-width:0}
+.entries{list-style:none;margin:0;padding:0}
+.entry{padding:14px 16px;border-top:1px solid var(--line);display:grid;grid-template-columns:1fr auto;gap:2px 12px}
+.entry:first-child{border-top:0}
+.e-tag{font-family:var(--mono);font-weight:600;font-size:15px;min-width:0;overflow-wrap:anywhere}
+.e-len{font-family:var(--display);font-weight:700;font-size:22px;line-height:1.1;text-align:right;font-variant-numeric:tabular-nums}
+.e-spec{grid-column:1 / -1;font-size:14px}
+.e-spec .t{color:var(--muted)}
+.e-meta{grid-column:1 / -1;font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.flag{color:var(--warn);background:var(--warn-soft);border-radius:999px;padding:0 8px;font-weight:600}
+.e-act{grid-column:1 / -1;display:flex;gap:8px;margin-top:8px}
+.emptybox{padding:28px 20px;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center}
+.emptybox h3{font-size:22px}
+.emptybox p{color:var(--muted);max-width:44ch}
+
+/* summary */
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.kpi{padding:14px;display:flex;flex-direction:column;gap:2px}
+.kpi .v{font-family:var(--display);font-size:30px;font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums}
+.kpi .k{font-size:12px;color:var(--muted)}
+.kpi.flagged .v{color:var(--warn)}
+.tblwrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:10px 14px;text-align:left;border-top:1px solid var(--line);font-size:14px;vertical-align:top}
+thead th{border-top:0;font-family:var(--display);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+td.num,th.num{text-align:right;white-space:nowrap}
+td .sp{font-family:var(--mono);font-size:13px;white-space:nowrap}
+td .ty{display:block;font-size:12px;color:var(--muted)}
+tfoot td{font-weight:600;border-top:2px solid var(--line)}
+.sumhead{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 14px 4px}
+.sumhead h3{font-size:16px;text-transform:uppercase;letter-spacing:.07em}
+.sumactions{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,12px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:calc(100% - 32px);z-index:20}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion: reduce){.toast{transition:none}}
+@media (max-width:420px){
+  .kpi .v{font-size:24px}
+  .kpi{padding:12px 10px}
+  .brand h1{font-size:24px}
+}
+</style>
+
+<div class="wrap">
+  <header class="countbar">
+    <div class="brand">
+      <svg class="reel" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <circle cx="20" cy="20" r="18" stroke="currentColor" stroke-width="2.5"></circle>
+        <circle cx="20" cy="20" r="12.5" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 2.2"></circle>
+        <circle cx="20" cy="20" r="8" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 2.2"></circle>
+        <circle cx="20" cy="20" r="3.2" fill="currentColor"></circle>
+      </svg>
+      <div>
+        <h1>Cable Stock Take</h1>
+        <p class="sub">Log every drum and coil with metres on hand</p>
+      </div>
+    </div>
+  </header>
+
+  <div class="countbar">
+    <label class="lbl" for="countSel">Active count</label>
+    <div class="countrow">
+      <select id="countSel" disabled><option>Loading counts…</option></select>
+      <button type="button" class="btn" id="newCountBtn" disabled>New count</button>
+    </div>
+    <p class="meta" id="countMeta"></p>
+  </div>
+
+  <form class="panel newcount" id="newCountForm" hidden>
+    <h2 style="font-size:20px">Start a count</h2>
+    <div class="field">
+      <label for="ncName">Count name <span class="req">Required</span></label>
+      <input type="text" id="ncName" autocomplete="off" placeholder="Stock take Oct 2026">
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label for="ncSite">Store or site</label>
+        <input type="text" id="ncSite" autocomplete="off" placeholder="Main store, Govindpura">
+      </div>
+      <div class="field">
+        <label for="ncDate">Count date</label>
+        <input type="date" id="ncDate">
+      </div>
+    </div>
+    <p class="err" id="ncErr" hidden></p>
+    <div class="actions">
+      <button type="button" class="btn" id="ncCancel">Cancel</button>
+      <button type="submit" class="btn primary" id="ncSubmit">Create count</button>
+    </div>
+  </form>
+
+  <div class="notice" id="notice" hidden></div>
+
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button type="button" class="tab" role="tab" id="tabbtn-count" aria-controls="tab-count" aria-selected="true">Count</button>
+    <button type="button" class="tab" role="tab" id="tabbtn-entries" aria-controls="tab-entries" aria-selected="false">Entries<span class="n" id="nEntries">0</span></button>
+    <button type="button" class="tab" role="tab" id="tabbtn-summary" aria-controls="tab-summary" aria-selected="false">Summary</button>
+  </nav>
+
+  <!-- COUNT -->
+  <section id="tab-count" role="tabpanel" aria-labelledby="tabbtn-count">
+    <form class="panel count" id="lineForm" novalidate>
+      <div class="editing" id="editBar" hidden>
+        <span>Editing <b id="editTag"></b></span>
+        <button type="button" class="btn small" id="editCancel">Cancel edit</button>
+      </div>
+      <fieldset id="formFields">
+        <div class="sec">
+          <h2>Drum or coil</h2>
+          <div class="field">
+            <label for="tag">Tag or sticker no. <span class="req">Required</span></label>
+            <input type="text" id="tag" class="tagin" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="DR-2417">
+            <p class="hint">Use the number painted on the flange or the coil sticker. For a box of sealed wire coils, use the box or lot no. For untagged cut pieces, write CUT-01, CUT-02 and so on.</p>
+            <p class="inline-warn" id="dupNote" hidden></p>
+          </div>
+          <div class="field">
+            <span class="flabel" id="packLbl">Package</span>
+            <div class="seg" role="radiogroup" aria-labelledby="packLbl">
+              <input type="radio" name="pack" id="pack-drum" value="Drum" checked><label for="pack-drum">Drum</label>
+              <input type="radio" name="pack" id="pack-coil" value="Coil"><label for="pack-coil">Coil</label>
+              <input type="radio" name="pack" id="pack-cut" value="Cut length"><label for="pack-cut">Cut length</label>
+            </div>
+          </div>
+          <div class="field" id="qtyBox" hidden>
+            <label for="qty">Number of coils</label>
+            <input type="number" id="qty" inputmode="numeric" step="1" min="1" placeholder="1">
+            <p class="hint">Count identical sealed coils together under one tag. Leave blank for a single coil.</p>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>Cable</h2>
+          <div class="field">
+            <label for="ctype">Cable type <span class="req">Required</span></label>
+            <select id="ctype">
+              <option value="">Choose type</option>
+              <option>LT power</option>
+              <option>HT power</option>
+              <option>Control</option>
+              <option>Instrumentation</option>
+              <option>Solar DC</option>
+              <option>Flexible cable</option>
+              <option>Wire (house / building)</option>
+              <option>Earthing</option>
+              <option>Welding</option>
+              <option>Telecom / data</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <span class="flabel" id="condLbl">Conductor</span>
+            <div class="seg" role="radiogroup" aria-labelledby="condLbl">
+              <input type="radio" name="conductor" id="cond-cu" value="Copper"><label for="cond-cu">Copper (Cu)</label>
+              <input type="radio" name="conductor" id="cond-al" value="Aluminium"><label for="cond-al">Aluminium (Al)</label>
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="cores">Cores</label>
+              <input type="text" id="cores" inputmode="decimal" list="coresList" autocomplete="off" placeholder="3.5">
+            </div>
+            <div class="field">
+              <label for="size">Size (mm²) <span class="req">Required</span></label>
+              <input type="text" id="size" inputmode="decimal" list="sizeList" autocomplete="off" placeholder="95">
+            </div>
+          </div>
+          <div class="field">
+            <span class="flabel" id="armLbl">Armour</span>
+            <div class="seg" role="radiogroup" aria-labelledby="armLbl">
+              <input type="radio" name="armour" id="arm-y" value="Armoured"><label for="arm-y">Armoured</label>
+              <input type="radio" name="armour" id="arm-n" value="Unarmoured"><label for="arm-n">Unarmoured</label>
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="insul">Insulation</label>
+              <select id="insul">
+                <option value="">Not noted</option>
+                <option>PVC</option>
+                <option>XLPE</option>
+                <option>FR</option>
+                <option>FRLS</option>
+                <option>LSZH</option>
+                <option>Rubber / EPR</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="make">Make</label>
+              <input type="text" id="make" list="makeList" autocomplete="off" placeholder="Polycab">
+            </div>
+          </div>
+          <div class="field" id="colourBox" hidden>
+            <span class="flabel" id="colLbl">Colour</span>
+            <div class="seg" role="radiogroup" aria-labelledby="colLbl">
+              <input type="radio" name="colour" id="col-red" value="Red"><label for="col-red"><span class="sw" style="--sw:#c62828"></span>Red</label>
+              <input type="radio" name="colour" id="col-yel" value="Yellow"><label for="col-yel"><span class="sw" style="--sw:#f2c200"></span>Yellow</label>
+              <input type="radio" name="colour" id="col-blu" value="Blue"><label for="col-blu"><span class="sw" style="--sw:#1f5fbf"></span>Blue</label>
+              <input type="radio" name="colour" id="col-blk" value="Black"><label for="col-blk"><span class="sw" style="--sw:#1a1a1a"></span>Black</label>
+              <input type="radio" name="colour" id="col-grn" value="Green"><label for="col-grn"><span class="sw" style="--sw:#2e8b3e"></span>Green</label>
+              <input type="radio" name="colour" id="col-gy" value="Green-Yellow"><label for="col-gy"><span class="sw" style="--sw:linear-gradient(135deg,#2e8b3e 50%,#f2c200 50%)"></span>Green-Yellow</label>
+              <input type="radio" name="colour" id="col-gry" value="Grey"><label for="col-gry"><span class="sw" style="--sw:#8a8f94"></span>Grey</label>
+              <input type="radio" name="colour" id="col-wht" value="White"><label for="col-wht"><span class="sw" style="--sw:#f5f5f5"></span>White</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>Length</h2>
+          <div class="field">
+            <span class="flabel" id="methLbl">How was it read?</span>
+            <div class="seg" role="radiogroup" aria-labelledby="methLbl">
+              <input type="radio" name="method" id="m-marks" value="marks" checked><label for="m-marks">Sheath marks</label>
+              <input type="radio" name="method" id="m-label" value="label"><label for="m-label">From label</label>
+              <input type="radio" name="method" id="m-meas" value="measured"><label for="m-meas">Measured</label>
+              <input type="radio" name="method" id="m-est" value="estimated"><label for="m-est">Estimated</label>
+            </div>
+          </div>
+          <div class="row2" id="marksBox">
+            <div class="field">
+              <label for="markOuter">Outer end mark (m)</label>
+              <input type="number" id="markOuter" inputmode="decimal" step="any" min="0" placeholder="1188">
+            </div>
+            <div class="field">
+              <label for="markInner">Inner end mark (m)</label>
+              <input type="number" id="markInner" inputmode="decimal" step="any" min="0" placeholder="876">
+            </div>
+          </div>
+          <div class="field" id="lenBox" hidden>
+            <label for="lengthM"><span id="lengthLbl">Remaining length (m)</span> <span class="req">Required</span></label>
+            <input type="number" id="lengthM" inputmode="decimal" step="any" min="0" placeholder="312">
+          </div>
+          <div class="field">
+            <label for="origM" id="origLbl">Full drum length (m)</label>
+            <input type="number" id="origM" inputmode="decimal" step="any" min="0" placeholder="500">
+            <p class="hint">Optional. From the drum or coil label, to show how much is left.</p>
+          </div>
+          <div class="readout" aria-live="polite">
+            <span class="k">Remaining on hand</span>
+            <span class="v" id="lenOut">–</span>
+            <span class="pct" id="pctOut"></span>
+          </div>
+          <p class="inline-warn" id="lenWarn" hidden></p>
+        </div>
+
+        <div class="sec">
+          <h2>Location and condition</h2>
+          <div class="field">
+            <label for="loc">Location or bay</label>
+            <input type="text" id="loc" list="locList" autocomplete="off" placeholder="Yard A, Row 3">
+          </div>
+          <div class="field">
+            <span class="flabel" id="condnLbl">Condition</span>
+            <div class="seg" role="radiogroup" aria-labelledby="condnLbl">
+              <input type="radio" name="condition" id="c-good" value="Good" checked><label for="c-good">Good</label>
+              <input type="radio" name="condition" id="c-sheath" value="Sheath damaged"><label for="c-sheath">Sheath damaged</label>
+              <input type="radio" name="condition" id="c-drum" value="Drum damaged"><label for="c-drum">Drum damaged</label>
+              <input type="radio" name="condition" id="c-wet" value="Water exposed"><label for="c-wet">Water exposed</label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="remarks">Remarks</label>
+            <textarea id="remarks" placeholder="End caps missing, reserved for site X, etc."></textarea>
+          </div>
+          <p class="err" id="formErr" hidden></p>
+        </div>
+      </fieldset>
+      <div class="savebar">
+        <label class="keep" for="keepSpec"><input type="checkbox" id="keepSpec" checked> Keep cable details for the next entry</label>
+        <button type="submit" class="btn primary" id="saveBtn">Save entry</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ENTRIES -->
+  <section id="tab-entries" role="tabpanel" aria-labelledby="tabbtn-entries" hidden>
+    <div class="panel">
+      <div class="listhead" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+        <input type="text" id="filter" placeholder="Search tag, size, make, location" autocomplete="off" aria-label="Search entries">
+      </div>
+      <ul class="entries" id="entryList"></ul>
+      <div class="emptybox" id="entriesEmpty">
+        <h3>No drums logged yet</h3>
+        <p>Each drum or coil you save on the Count tab appears here with its length, location and who counted it.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SUMMARY -->
+  <section id="tab-summary" role="tabpanel" aria-labelledby="tabbtn-summary" hidden style="display:flex;flex-direction:column;gap:14px">
+    <div class="kpis">
+      <div class="panel kpi"><span class="v" id="kPieces">0</span><span class="k" id="kPiecesL">drums and coils</span></div>
+      <div class="panel kpi"><span class="v" id="kMetres">0</span><span class="k">metres on hand</span></div>
+      <div class="panel kpi flagged"><span class="v" id="kFlag">0</span><span class="k">need attention</span></div>
+    </div>
+    <div class="panel">
+      <div class="sumhead"><h3>By cable size</h3></div>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th>Cable</th><th class="num">Drums</th><th class="num">Coils / cut</th><th class="num">Metres</th></tr></thead>
+          <tbody id="specBody"></tbody>
+          <tfoot id="specFoot"></tfoot>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="sumhead"><h3>By location</h3></div>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th>Location</th><th class="num">Pieces</th><th class="num">Metres</th></tr></thead>
+          <tbody id="locBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="sumactions">
+      <button type="button" class="btn" id="exportBtn" hidden>Export CSV</button>
+      <button type="button" class="btn" id="closeBtn" hidden>Close this count</button>
+    </div>
+  </section>
+</div>
+
+<datalist id="coresList"><option value="1"></option><option value="2"></option><option value="3"></option><option value="3.5"></option><option value="4"></option><option value="5"></option><option value="7"></option><option value="12"></option><option value="19"></option><option value="24"></option></datalist>
+<datalist id="sizeList"><option value="0.5"></option><option value="0.75"></option><option value="1"></option><option value="1.5"></option><option value="2.5"></option><option value="4"></option><option value="6"></option><option value="10"></option><option value="16"></option><option value="25"></option><option value="35"></option><option value="50"></option><option value="70"></option><option value="95"></option><option value="120"></option><option value="150"></option><option value="185"></option><option value="240"></option><option value="300"></option><option value="400"></option></datalist>
+<datalist id="makeList"></datalist>
+<datalist id="locList"></datalist>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  const S = { db:null, user:null, me:null, canWrite:null, canEdit:false, readOnly:false, dbMissing:false,
+    counts:[], countsLoaded:false, countId:null, lines:[], unsubLines:null, editingId:null, filter:'' };
+  const LS_KEY = 'cst.count';
+  const lsGet = k => { try { return localStorage.getItem(k); } catch(e){ return null; } };
+  const lsSet = (k,v) => { try { localStorage.setItem(k,v); } catch(e){} };
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fmt = n => (n == null || !isFinite(n)) ? '–' : (Math.round(n*10)/10).toLocaleString('en-IN', {maximumFractionDigits:1});
+  const round1 = n => Math.round(n*10)/10;
+  const today = () => { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+  const prettyDate = s => { if(!s) return ''; const d = new Date(s+'T00:00:00'); return isNaN(d) ? s : d.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}); };
+  const timeOf = ms => ms ? new Date(ms).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '';
+
+  function docIdForTag(tag){
+    const t = tag.trim().toUpperCase().replace(/\s+/g,'-').replace(/[^A-Z0-9_\-.~:@+]/g,'-').slice(0,120);
+    return 'd_' + t;
+  }
+  function specLabel(l){
+    const parts = [];
+    const cs = [l.cores ? l.cores+'C' : '', l.size ? l.size+' mm²' : ''].filter(Boolean).join(' × ');
+    if (cs) parts.push(cs);
+    if (l.conductor) parts.push(l.conductor === 'Aluminium' ? 'Al' : 'Cu');
+    if (l.insulation) parts.push(l.insulation);
+    if (l.armour) parts.push(l.armour === 'Armoured' ? 'Arm.' : 'Unarm.');
+    if (l.colour) parts.push(l.colour);
+    return parts.join(' ') || 'Spec not set';
+  }
+  const isWireType = t => t === 'Flexible cable' || /^Wire/.test(t || '');
+  const pieceQty = l => (l.pack === 'Coil' && l.qty > 1) ? l.qty : 1;
+  const radio = name => { const el = document.querySelector('input[name="'+name+'"]:checked'); return el ? el.value : ''; };
+  const setRadio = (name,val) => $$('input[name="'+name+'"]').forEach(r => { r.checked = (r.value === val); });
+  const num = sel => { const v = parseFloat($(sel).value); return isFinite(v) ? v : null; };
+
+  let toastT;
+  function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('show'), 2600); }
+
+  const currentCount = () => S.counts.find(c => c.id === S.countId) || null;
+
+  /* ---------- access ---------- */
+  function blockReason(){
+    if (S.dbMissing) return 'Sign in on claude.ai to log counts on this page. Saving needs your account.';
+    if (!S.countsLoaded) return null;
+    if (!S.countId) return 'Start a count first with New count.';
+    const c = currentCount();
+    if (c && c.status === 'closed') return S.canEdit ? 'This count is closed. Reopen it from Summary to add drums.' : 'This count is closed. Ask the owner to reopen it if more drums need logging.';
+    if (S.readOnly || S.canWrite === false) return 'You can view this count but not add to it. Ask the page owner for Contributor access.';
+    return null;
+  }
+  function renderAccess(){
+    const r = blockReason();
+    const n = $('#notice');
+    if (r){ n.hidden = false; n.innerHTML = '<strong>Saving is off.</strong> ' + esc(r); } else n.hidden = true;
+    const off = !!r || !S.countsLoaded;
+    $('#formFields').disabled = off;
+    $('#saveBtn').disabled = off;
+    const canStart = !!S.db && !S.readOnly && S.canWrite !== false;
+    $('#newCountBtn').disabled = !canStart;
+  }
+
+  /* ---------- counts ---------- */
+  function renderCounts(){
+    const sel = $('#countSel');
+    if (!S.countsLoaded){ return; }
+    sel.disabled = S.counts.length === 0;
+    sel.innerHTML = S.counts.length ? S.counts.map(c => '<option value="'+esc(c.id)+'">'+esc(c.name || 'Untitled count')+(c.status==='closed'?' (closed)':'')+'</option>').join('') : '<option>No counts yet</option>';
+    if (S.countId) sel.value = S.countId;
+    const c = currentCount();
+    const meta = $('#countMeta');
+    if (c){
+      const pieces = S.lines.length, m = S.lines.reduce((a,l)=>a+(l.lengthM||0),0);
+      meta.innerHTML = [c.site ? esc(c.site) : '', c.date ? esc(prettyDate(c.date)) : '',
+        '<span class="pill '+(c.status==='closed'?'closed':'open')+'">'+(c.status==='closed'?'Closed':'Open')+'</span>',
+        pieces ? fmt(pieces)+' logged · '+fmt(m)+' m' : ''].filter(Boolean).join(' · ');
+    } else meta.textContent = S.db ? 'Create a count for the store or site you are checking, then log each drum as you go.' : '';
+  }
+  function selectCount(id){
+    if (S.countId === id) return;
+    S.countId = id; lsSet(LS_KEY, id || '');
+    if (S.unsubLines){ S.unsubLines(); S.unsubLines = null; }
+    S.lines = []; cancelEdit(true);
+    if (id && S.db){
+      S.unsubLines = S.db.collection('counts/'+id+'/lines').orderBy('at','desc').onSnapshot(snap => {
+        S.lines = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+        renderAll();
+      }, err => showErr('Could not load entries for this count. Reload the page to try again.'));
+    }
+    renderAll();
+  }
+  function showErr(msg){ const n = $('#notice'); n.hidden = false; n.innerHTML = '<strong>Problem.</strong> '+esc(msg); }
+
+  $('#countSel').addEventListener('change', e => selectCount(e.target.value));
+  $('#newCountBtn').addEventListener('click', () => {
+    const f = $('#newCountForm'); f.hidden = !f.hidden;
+    if (!f.hidden){
+      const d = new Date();
+      if (!$('#ncName').value) $('#ncName').value = 'Stock take ' + d.toLocaleDateString('en-IN',{month:'short',year:'numeric'});
+      if (!$('#ncDate').value) $('#ncDate').value = today();
+      $('#ncName').focus();
+    }
+  });
+  $('#ncCancel').addEventListener('click', () => { $('#newCountForm').hidden = true; $('#ncErr').hidden = true; });
+  $('#newCountForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const name = $('#ncName').value.trim();
+    const err = $('#ncErr');
+    if (!name){ err.hidden = false; err.textContent = 'Give the count a name so others can find it.'; return; }
+    err.hidden = true;
+    const btn = $('#ncSubmit'); btn.disabled = true;
+    try {
+      const ref = S.db.collection('counts').doc();
+      await ref.set({ name, site: $('#ncSite').value.trim(), date: $('#ncDate').value || today(), status:'open', by: S.me && S.me.id || null, at: Date.now() });
+      $('#newCountForm').hidden = true; $('#ncName').value = ''; $('#ncSite').value = '';
+      selectCount(ref.id); switchTab('count');
+      toast('Count created');
+    } catch(x){ handleWriteErr(x, err); }
+    finally { btn.disabled = false; }
+  });
+
+  /* ---------- form ---------- */
+  function computeLength(){
+    if (radio('method') === 'marks'){
+      const a = num('#markOuter'), b = num('#markInner');
+      return (a != null && b != null) ? round1(Math.abs(a - b)) : null;
+    }
+    const v = num('#lengthM'); return v == null ? null : round1(v);
+  }
+  function qtyVal(){
+    if (radio('pack') !== 'Coil') return 1;
+    const v = parseInt($('#qty').value, 10);
+    return v > 0 ? v : 1;
+  }
+  function updatePackUI(){
+    const coil = radio('pack') === 'Coil';
+    $('#qtyBox').hidden = !coil;
+    $('#lengthLbl').textContent = coil ? 'Length per coil (m)' : 'Remaining length (m)';
+    $('#origLbl').textContent = coil ? 'Full coil length (m)' : 'Full drum length (m)';
+    $('#origM').placeholder = coil ? '90' : '500';
+    $('#lengthM').placeholder = coil ? '90' : '312';
+    $('#colourBox').hidden = !isWireType($('#ctype').value);
+    updateLengthUI();
+  }
+  function updateLengthUI(){
+    const m = radio('method');
+    $('#marksBox').hidden = m !== 'marks';
+    $('#lenBox').hidden = m === 'marks';
+    const L = computeLength(), o = num('#origM'), q = qtyVal();
+    const unit = radio('pack') === 'Coil' ? 'coil' : 'drum';
+    $('#lenOut').textContent = L != null ? fmt(round1(L*q))+' m' : '–';
+    let note = '';
+    if (L != null && q > 1) note = q+' coils × '+fmt(L)+' m';
+    else if (L != null && o) note = Math.round(L/o*100)+'% of the '+fmt(o)+' m '+unit+' left';
+    else if (m === 'marks') note = 'Remaining = outer mark minus inner mark';
+    $('#pctOut').textContent = note;
+    const w = $('#lenWarn');
+    if (L != null && o && L > o){ w.hidden = false; w.textContent = 'Length is more than the full '+unit+' length. Check the reading or the label.'; }
+    else w.hidden = true;
+  }
+  ['#markOuter','#markInner','#lengthM','#origM','#qty'].forEach(s => $(s).addEventListener('input', updateLengthUI));
+  $$('input[name="method"]').forEach(r => r.addEventListener('change', updateLengthUI));
+  $$('input[name="pack"]').forEach(r => r.addEventListener('change', updatePackUI));
+  $('#ctype').addEventListener('change', () => {
+    const t = $('#ctype').value;
+    if (isWireType(t) && !S.editingId){
+      if (radio('pack') === 'Drum') setRadio('pack','Coil');
+      if (!$('#cores').value && /^Wire/.test(t)) $('#cores').value = '1';
+      if (radio('method') === 'marks' && !$('#markOuter').value && !$('#markInner').value) setRadio('method','label');
+    }
+    if (!isWireType(t)) setRadio('colour','');
+    updatePackUI();
+  });
+
+  function checkDup(){
+    const tag = $('#tag').value.trim(), box = $('#dupNote');
+    if (!tag){ box.hidden = true; return; }
+    const id = docIdForTag(tag);
+    if (S.editingId === id){ box.hidden = true; return; }
+    const hit = S.lines.find(l => l.id === id);
+    if (hit){ box.hidden = false; box.textContent = hit.tag+' is already counted ('+fmt(hit.lengthM)+' m'+(hit.location ? ', '+hit.location : '')+'). Saving will replace that entry.'; }
+    else box.hidden = true;
+  }
+  $('#tag').addEventListener('input', checkDup);
+
+  function readForm(){
+    const per = computeLength(), q = qtyVal(), type = $('#ctype').value;
+    return {
+      tag: $('#tag').value.trim().toUpperCase(),
+      pack: radio('pack'), qty: q, type: type, conductor: radio('conductor'),
+      cores: $('#cores').value.trim(), size: $('#size').value.trim(), armour: radio('armour'),
+      insulation: $('#insul').value, make: $('#make').value.trim(),
+      colour: isWireType(type) ? radio('colour') : '',
+      method: radio('method'), markOuter: num('#markOuter'), markInner: num('#markInner'),
+      perM: per, lengthM: per == null ? null : round1(per * q), origM: num('#origM'),
+      location: $('#loc').value.trim(), condition: radio('condition') || 'Good',
+      remarks: $('#remarks').value.trim()
+    };
+  }
+  function fillForm(l){
+    $('#tag').value = l.tag || ''; setRadio('pack', l.pack || 'Drum'); $('#ctype').value = l.type || '';
+    setRadio('conductor', l.conductor || ''); $('#cores').value = l.cores || ''; $('#size').value = l.size || '';
+    setRadio('armour', l.armour || ''); $('#insul').value = l.insulation || ''; $('#make').value = l.make || '';
+    setRadio('colour', l.colour || ''); $('#qty').value = l.qty > 1 ? l.qty : '';
+    setRadio('method', l.method || 'measured');
+    $('#markOuter').value = l.markOuter != null ? l.markOuter : ''; $('#markInner').value = l.markInner != null ? l.markInner : '';
+    const per = l.perM != null ? l.perM : l.lengthM;
+    $('#lengthM').value = (l.method !== 'marks' && per != null) ? per : '';
+    $('#origM').value = l.origM != null ? l.origM : '';
+    $('#loc').value = l.location || ''; setRadio('condition', l.condition || 'Good'); $('#remarks').value = l.remarks || '';
+    updatePackUI(); checkDup();
+  }
+  function clearAfterSave(keepSpec){
+    ['#tag','#qty','#markOuter','#markInner','#lengthM','#origM','#remarks'].forEach(s => $(s).value = '');
+    setRadio('condition','Good');
+    if (!keepSpec){
+      $('#ctype').value = ''; setRadio('conductor',''); $('#cores').value = ''; $('#size').value = '';
+      setRadio('armour',''); $('#insul').value = ''; $('#make').value = ''; $('#loc').value = '';
+      setRadio('colour',''); setRadio('pack','Drum'); setRadio('method','marks');
+    }
+    $('#formErr').hidden = true; updatePackUI(); checkDup();
+  }
+  function startEdit(id){
+    const l = S.lines.find(x => x.id === id); if (!l) return;
+    S.editingId = id; fillForm(l);
+    $('#editBar').hidden = false; $('#editTag').textContent = l.tag;
+    $('#saveBtn').textContent = 'Save changes';
+    switchTab('count'); window.scrollTo({top:0, behavior:'smooth'});
+  }
+  function cancelEdit(silent){
+    if (!S.editingId && silent) return;
+    S.editingId = null; $('#editBar').hidden = true; $('#saveBtn').textContent = 'Save entry';
+    if (!silent) clearAfterSave(false);
+  }
+  $('#editCancel').addEventListener('click', () => cancelEdit(false));
+
+  function handleWriteErr(x, box){
+    const code = x && x.code;
+    let msg = 'Could not save. Check your connection and try again.';
+    if (code === 'invalid_argument' && S.canWrite !== true){ S.readOnly = true; msg = 'You can view this page but not save to it. Ask the owner for Contributor access.'; }
+    else if (code === 'quota_exceeded') msg = 'This count has hit its storage limit. Export the CSV, then start a new count.';
+    else if (code === 'revoked' || code === 'not_granted'){ S.readOnly = true; msg = 'Your access to this page changed, so saving is off.'; }
+    else if (code === 'resource_exhausted') msg = 'Too many saves in a short time. Wait a few seconds and save again.';
+    box.hidden = false; box.textContent = msg; renderAccess();
+  }
+
+  $('#lineForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (blockReason()) return;
+    const d = readForm(), err = $('#formErr');
+    const missing = [];
+    if (!d.tag) missing.push('tag no.');
+    if (!d.type) missing.push('cable type');
+    if (!d.size) missing.push('size');
+    if (d.lengthM == null) missing.push(d.method === 'marks' ? 'both sheath marks' : 'remaining length');
+    if (missing.length){ err.hidden = false; err.textContent = 'Fill in ' + missing.join(', ') + ' before saving.'; return; }
+    if (d.lengthM < 0){ err.hidden = false; err.textContent = 'Length cannot be negative.'; return; }
+    const qraw = $('#qty').value.trim();
+    if (d.pack === 'Coil' && qraw && !(/^\d+$/.test(qraw) && +qraw > 0)){ err.hidden = false; err.textContent = 'Number of coils must be a whole number, like 12.'; return; }
+    err.hidden = true;
+    const id = docIdForTag(d.tag);
+    const data = Object.assign(d, { by: S.me && S.me.id || null, at: Date.now() });
+    const btn = $('#saveBtn'); btn.disabled = true;
+    try {
+      await S.db.doc('counts/'+S.countId+'/lines/'+id).set(data);
+      if (S.editingId && S.editingId !== id){ await S.db.doc('counts/'+S.countId+'/lines/'+S.editingId).delete(); }
+      const wasEdit = !!S.editingId;
+      toast((wasEdit ? 'Updated ' : 'Saved ') + d.tag + ' · ' + fmt(d.lengthM) + ' m');
+      cancelEdit(true);
+      clearAfterSave(wasEdit ? false : $('#keepSpec').checked);
+      $('#tag').focus();
+    } catch(x){ handleWriteErr(x, err); }
+    finally { renderAccess(); }
+  });
+
+  /* ---------- entries ---------- */
+  $('#filter').addEventListener('input', e => { S.filter = e.target.value; renderEntries(); });
+  function renderEntries(){
+    const q = S.filter.trim().toLowerCase();
+    const rows = S.lines.filter(l => !q || [l.tag, specLabel(l), l.type, l.location, l.make, l.condition].join(' ').toLowerCase().includes(q));
+    const canAct = !blockReason();
+    $('#entryList').innerHTML = rows.map(l => {
+      const flag = l.condition && l.condition !== 'Good' ? '<span class="flag">'+esc(l.condition)+'</span>' : '';
+      return '<li class="entry">'+
+        '<span class="e-tag">'+esc(l.tag)+'</span><span class="e-len">'+fmt(l.lengthM)+' m</span>'+
+        '<span class="e-spec">'+esc(specLabel(l))+' <span class="t">· '+esc(l.type || '')+(l.make ? ' · '+esc(l.make) : '')+'</span></span>'+
+        '<span class="e-meta"><span>'+(pieceQty(l) > 1 ? esc(pieceQty(l)+' coils × '+fmt(l.perM)+' m') : esc(l.pack || 'Drum'))+'</span><span>'+esc(l.location || 'No location')+'</span>'+
+          (l.by ? '<span data-uid="'+esc(l.by)+'">…</span>' : '')+'<span>'+esc(timeOf(l.at))+'</span>'+flag+'</span>'+
+        (canAct ? '<span class="e-act"><button type="button" class="btn small" data-edit="'+esc(l.id)+'">Edit</button><button type="button" class="btn small danger" data-del="'+esc(l.id)+'">Delete</button></span>' : '')+
+      '</li>';
+    }).join('');
+    const empty = $('#entriesEmpty');
+    empty.hidden = rows.length > 0;
+    if (!rows.length && S.lines.length){ empty.querySelector('h3').textContent = 'No matches'; empty.querySelector('p').textContent = 'Nothing logged matches “'+S.filter+'”. Try a tag, size like 95, or a location.'; }
+    else if (!rows.length){ empty.querySelector('h3').textContent = 'No drums logged yet'; empty.querySelector('p').textContent = 'Each drum or coil you save on the Count tab appears here with its length, location and who counted it.'; }
+    paintNames();
+  }
+  async function paintNames(){
+    const spans = $$('[data-uid]'); if (!spans.length) return;
+    if (!S.user){ spans.forEach(s => s.textContent = 'Counted'); return; }
+    const ids = Array.from(new Set(spans.map(s => s.dataset.uid)));
+    const ps = await S.user.profiles(ids);
+    spans.forEach(s => { const p = ps[s.dataset.uid]; s.textContent = p ? (p.isMe ? 'You' : (p.name || 'Someone')) : 'Someone'; });
+  }
+  $('#entryList').addEventListener('click', async e => {
+    const ed = e.target.closest('[data-edit]'); if (ed){ startEdit(ed.dataset.edit); return; }
+    const del = e.target.closest('[data-del]'); if (!del) return;
+    if (!del.hasAttribute('data-armed')){
+      del.setAttribute('data-armed',''); del.textContent = 'Tap again to delete';
+      setTimeout(() => { if (del.isConnected){ del.removeAttribute('data-armed'); del.textContent = 'Delete'; } }, 3500);
+      return;
+    }
+    del.disabled = true;
+    try { await S.db.doc('counts/'+S.countId+'/lines/'+del.dataset.del).delete(); toast('Entry deleted'); if (S.editingId === del.dataset.del) cancelEdit(false); }
+    catch(x){ toast('Could not delete. Try again.'); del.disabled = false; }
+  });
+
+  /* ---------- summary ---------- */
+  function renderSummary(){
+    const L = S.lines;
+    const drums = L.filter(l => (l.pack || 'Drum') === 'Drum').length;
+    const coils = L.filter(l => l.pack === 'Coil').reduce((a,l) => a + pieceQty(l), 0);
+    const cuts = L.filter(l => l.pack === 'Cut length').length;
+    const total = L.reduce((a,l) => a + (l.lengthM || 0), 0);
+    const flagged = L.filter(l => l.condition && l.condition !== 'Good').length;
+    $('#kPieces').textContent = fmt(drums + coils + cuts);
+    const bits = [drums ? drums+' drums' : '', coils ? coils+' coils' : '', cuts ? cuts+' cuts' : ''].filter(Boolean);
+    $('#kPiecesL').textContent = bits.length > 1 ? bits.join(', ') : coils ? 'coils counted' : cuts ? 'cut lengths counted' : 'drums counted';
+    $('#kMetres').textContent = fmt(total);
+    $('#kFlag').textContent = fmt(flagged);
+
+    const groups = new Map();
+    L.forEach(l => {
+      const key = [l.type, l.conductor, l.cores, l.size, l.armour, l.insulation, l.colour].join('|');
+      if (!groups.has(key)) groups.set(key, {spec: specLabel(l), type: l.type, drums:0, other:0, m:0});
+      const g = groups.get(key);
+      if ((l.pack || 'Drum') === 'Drum') g.drums++; else g.other += pieceQty(l);
+      g.m += l.lengthM || 0;
+    });
+    const gs = Array.from(groups.values()).sort((a,b) => b.m - a.m);
+    $('#specBody').innerHTML = gs.length ? gs.map(g => '<tr><td><span class="sp">'+esc(g.spec)+'</span><span class="ty">'+esc(g.type || '')+'</span></td><td class="num">'+fmt(g.drums)+'</td><td class="num">'+fmt(g.other)+'</td><td class="num">'+fmt(g.m)+'</td></tr>').join('')
+      : '<tr><td colspan="4" style="color:var(--muted)">Totals by cable size appear once drums are logged.</td></tr>';
+    $('#specFoot').innerHTML = gs.length ? '<tr><td>Total</td><td class="num">'+fmt(drums)+'</td><td class="num">'+fmt(coils + cuts)+'</td><td class="num">'+fmt(total)+'</td></tr>' : '';
+
+    const locs = new Map();
+    L.forEach(l => { const k = l.location || 'No location'; const g = locs.get(k) || {n:0,m:0}; g.n += pieceQty(l); g.m += l.lengthM || 0; locs.set(k,g); });
+    const ls = Array.from(locs.entries()).sort((a,b) => a[0].localeCompare(b[0], 'en', {numeric:true}));
+    $('#locBody').innerHTML = ls.length ? ls.map(([k,g]) => '<tr><td>'+esc(k)+'</td><td class="num">'+fmt(g.n)+'</td><td class="num">'+fmt(g.m)+'</td></tr>').join('')
+      : '<tr><td colspan="3" style="color:var(--muted)">Locations appear once drums are logged.</td></tr>';
+
+    const c = currentCount();
+    const cb = $('#closeBtn');
+    cb.hidden = !(c && S.canEdit);
+    if (c) cb.textContent = c.status === 'closed' ? 'Reopen this count' : 'Close this count';
+    $('#exportBtn').disabled = !L.length;
+  }
+  $('#closeBtn').addEventListener('click', async () => {
+    const c = currentCount(); if (!c) return;
+    const closing = c.status !== 'closed';
+    try { await S.db.doc('counts/'+c.id).update(closing ? {status:'closed', closedAt: Date.now(), closedBy: S.me && S.me.id || null} : {status:'open'}); toast(closing ? 'Count closed' : 'Count reopened'); }
+    catch(x){ toast('Could not update the count. Try again.'); }
+  });
+
+  function csvCell(v){ const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+  $('#exportBtn').addEventListener('click', async () => {
+    const dl = S.downloads; if (!dl) return;
+    const c = currentCount() || {};
+    let names = {};
+    if (S.user){ const ids = Array.from(new Set(S.lines.map(l => l.by).filter(Boolean))); if (ids.length) names = await S.user.profiles(ids); }
+    const head = ['Tag','Package','Pieces','Cable type','Spec','Conductor','Cores','Size (sq mm)','Armour','Insulation','Colour','Make','Length method','Outer mark (m)','Inner mark (m)','Length per piece (m)','Total metres','Full drum/coil length (m)','Location','Condition','Remarks','Counted by','Counted at'];
+    const methodL = {marks:'Sheath marks', label:'From label', measured:'Measured', estimated:'Estimated'};
+    const rows = S.lines.slice().sort((a,b) => (a.tag||'').localeCompare(b.tag||'', 'en', {numeric:true})).map(l => [
+      l.tag, l.pack, pieceQty(l), l.type, specLabel(l), l.conductor, l.cores, l.size, l.armour, l.insulation, l.colour, l.make, methodL[l.method] || l.method,
+      l.markOuter, l.markInner, l.perM != null ? l.perM : l.lengthM, l.lengthM, l.origM, l.location, l.condition, l.remarks,
+      l.by ? ((names[l.by] && names[l.by].name) || '') : '', l.at ? new Date(l.at).toLocaleString('en-IN') : ''
+    ]);
+    const csv = '﻿' + [head].concat(rows).map(r => r.map(csvCell).join(',')).join('\r\n');
+    const slug = (c.name || 'cable-count').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    try { await dl.save({ filename: slug + '.csv', data: csv }); toast('CSV saved'); }
+    catch(x){ if (x && x.code === 'declined') return; toast(x && x.code === 'rate_limited' ? 'A save is already open. Try again in a moment.' : 'Could not save the file.'); }
+  });
+
+  /* ---------- tabs ---------- */
+  function switchTab(name){
+    ['count','entries','summary'].forEach(t => {
+      $('#tab-'+t).hidden = t !== name;
+      $('#tabbtn-'+t).setAttribute('aria-selected', String(t === name));
+    });
+  }
+  ['count','entries','summary'].forEach(t => $('#tabbtn-'+t).addEventListener('click', () => switchTab(t)));
+
+  function fillDatalists(){
+    const uniq = k => Array.from(new Set(S.lines.map(l => l[k]).filter(Boolean))).sort();
+    $('#makeList').innerHTML = uniq('make').map(v => '<option value="'+esc(v)+'"></option>').join('');
+    $('#locList').innerHTML = uniq('location').map(v => '<option value="'+esc(v)+'"></option>').join('');
+  }
+
+  function renderAll(){
+    renderCounts(); renderAccess();
+    $('#nEntries').textContent = S.lines.length;
+    renderEntries(); renderSummary(); fillDatalists(); checkDup();
+  }
+
+  updatePackUI();
+  renderAccess();
+
+  /* ---------- boot ---------- */
+  (async function boot(){
+    const C = window.claude;
+    const use = n => (C && typeof C.use === 'function') ? C.use(n).catch(() => null) : Promise.resolve(null);
+    const [db, user, downloads] = await Promise.all([use('db'), use('user'), use('downloads')]);
+    S.downloads = downloads;
+    S.user = user;
+    $('#exportBtn').hidden = !downloads;
+    if (user){
+      S.me = await user.me();
+      S.canEdit = !!S.me.canEdit;
+      S.canWrite = await user.can('data.write');
+    }
+    if (!db){
+      S.dbMissing = true; S.countsLoaded = true;
+      $('#countSel').innerHTML = '<option>Sign in to load counts</option>';
+      renderAll(); return;
+    }
+    S.db = db;
+    db.collection('counts').orderBy('at','desc').onSnapshot(snap => {
+      S.counts = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+      S.countsLoaded = true;
+      if (!S.countId || !S.counts.find(c => c.id === S.countId)){
+        const saved = lsGet(LS_KEY);
+        const pick = S.counts.find(c => c.id === saved) || S.counts.find(c => c.status !== 'closed') || S.counts[0];
+        selectCount(pick ? pick.id : null);
+      }
+      renderAll();
+      if (!S.counts.length && !S.autoOpened && !S.readOnly && S.canWrite !== false && $('#newCountForm').hidden){ S.autoOpened = true; $('#newCountBtn').click(); }
+    }, err => showErr('Could not load counts. Reload the page to try again.'));
+  })();
+})();
+</script>
+
+</body></html>
