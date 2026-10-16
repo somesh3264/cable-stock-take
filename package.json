@@ -1,0 +1,10 @@
+{
+  "name": "cable-stock-take",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Phone-friendly stock count form for cable drums, flexible cable and wire coils",
+  "type": "module",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0"
+  }
+}

@@ -1,10 +1,19 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Stock count form for cable drums, flexible cable and wire coils.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 40 40%27%3E%3Ccircle cx=%2720%27 cy=%2720%27 r=%2717%27 fill=%27none%27 stroke=%27%23a9562a%27 stroke-width=%275%27/%3E%3Ccircle cx=%2720%27 cy=%2720%27 r=%275%27 fill=%27%23a9562a%27/%3E%3C/svg%3E">
 <title>Cable Stock Take</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
 /* Layout: one 720px working column for a phone on the store floor. Tabs switch Count / Entries / Summary; save bar sticks to the bottom of the form. Steel-grey ground, copper as the single accent. */
 :root{
   --bg:#eceff1; --surface:#ffffff; --field:#f6f8f9; --ink:#1a2228; --muted:#5b6872; --line:#d2d9dd;
@@ -149,8 +158,16 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
   .kpi{padding:12px 10px}
   .brand h1{font-size:24px}
 }
+.gate{padding:20px 16px;display:flex;flex-direction:column;gap:14px}
+.gate h2{font-size:22px}
+#app{display:flex;flex-direction:column;gap:16px}
+.who{font-size:13px;color:var(--muted);margin-top:2px}
+.who b{color:var(--ink);font-weight:600}
+.linkbtn{background:none;border:0;padding:0 2px;color:var(--copper);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 </style>
 
+</head>
+<body>
 <div class="wrap">
   <header class="countbar">
     <div class="brand">
@@ -163,9 +180,28 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
       <div>
         <h1>Cable Stock Take</h1>
         <p class="sub">Log every drum and coil with metres on hand</p>
+        <p class="who" id="who" hidden>Counting as <b id="whoName"></b> · <button type="button" class="linkbtn" id="whoChange">Change</button></p>
       </div>
     </div>
   </header>
+
+  <form class="panel gate" id="gate" hidden novalidate>
+    <h2>Who’s counting?</h2>
+    <p class="hint">Your name is saved with every entry you log, so the store in-charge can see who counted what.</p>
+    <div class="field">
+      <label for="gName">Your name</label>
+      <input type="text" id="gName" autocomplete="name" placeholder="Ravi Sharma">
+    </div>
+    <div class="field" id="gPinBox" hidden>
+      <label for="gPin">Team PIN</label>
+      <input type="password" id="gPin" inputmode="numeric" autocomplete="off">
+      <p class="hint">Ask the store in-charge for the PIN.</p>
+    </div>
+    <p class="err" id="gErr" hidden></p>
+    <div><button type="submit" class="btn primary" id="gSubmit">Start counting</button></div>
+  </form>
+
+  <div id="app" hidden>
 
   <div class="countbar">
     <label class="lbl" for="countSel">Active count</label>
@@ -427,6 +463,7 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
       <button type="button" class="btn" id="closeBtn" hidden>Close this count</button>
     </div>
   </section>
+  </div>
 </div>
 
 <datalist id="coresList"><option value="1"></option><option value="2"></option><option value="3"></option><option value="3.5"></option><option value="4"></option><option value="5"></option><option value="7"></option><option value="12"></option><option value="19"></option><option value="24"></option></datalist>
@@ -440,11 +477,12 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
 (function(){
   const $ = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
-  const S = { db:null, user:null, me:null, canWrite:null, canEdit:false, readOnly:false, dbMissing:false,
-    counts:[], countsLoaded:false, countId:null, lines:[], unsubLines:null, editingId:null, filter:'' };
-  const LS_KEY = 'cst.count';
-  const lsGet = k => { try { return localStorage.getItem(k); } catch(e){ return null; } };
-  const lsSet = (k,v) => { try { localStorage.setItem(k,v); } catch(e){} };
+  const S = { name:'', pin:'', ready:false, dbMissing:false, offline:false, loadError:'',
+    counts:[], countsSig:'', countsLoaded:false, countId:null, lines:[], linesSig:'', editingId:null, filter:'', busy:false };
+  const LS = {
+    get(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } },
+    set(k,v){ try { localStorage.setItem(k, v); } catch(e){} }
+  };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt = n => (n == null || !isFinite(n)) ? '–' : (Math.round(n*10)/10).toLocaleString('en-IN', {maximumFractionDigits:1});
   const round1 = n => Math.round(n*10)/10;
@@ -477,59 +515,134 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
 
   const currentCount = () => S.counts.find(c => c.id === S.countId) || null;
 
+  /* ---------- server ---------- */
+  function ApiError(status, code, message){ const e = new Error(message || code); e.status = status; e.code = code; return e; }
+  async function api(method, path, body){
+    const headers = { 'Accept':'application/json' };
+    if (body) headers['Content-Type'] = 'application/json';
+    if (S.pin) headers['X-Count-Pin'] = S.pin;
+    let r;
+    try { r = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined, cache:'no-store' }); }
+    catch(e){ throw ApiError(0, 'network', 'Can’t reach the server. Check your connection and try again.'); }
+    let j = null; try { j = await r.json(); } catch(e){}
+    if (!r.ok) throw ApiError(r.status, (j && j.error) || 'http', (j && j.message) || ('The server answered with an error ('+r.status+').'));
+    return j || {};
+  }
+  async function loadCounts(){
+    const j = await api('GET', '/api/counts');
+    S.dbMissing = false; S.offline = false; S.loadError = '';
+    S.countsLoaded = true;
+    const sig = JSON.stringify(j.counts || []);
+    if (sig !== S.countsSig){ S.countsSig = sig; S.counts = j.counts || []; }
+    if (!S.countId || !S.counts.find(c => c.id === S.countId)){
+      const saved = LS.get('cst.count');
+      const pick = S.counts.find(c => c.id === saved) || S.counts.find(c => c.status !== 'closed') || S.counts[0];
+      setCount(pick ? pick.id : null);
+    }
+  }
+  async function loadLines(){
+    const id = S.countId; if (!id) return;
+    const j = await api('GET', '/api/lines?count='+encodeURIComponent(id));
+    if (S.countId !== id) return;
+    const sig = JSON.stringify(j.lines || []);
+    if (sig !== S.linesSig){ S.linesSig = sig; S.lines = j.lines || []; }
+  }
+  function handleLoadErr(e){
+    if (e.status === 401){ S.ready = false; showGate(true, S.pin ? 'That PIN was not accepted. Check it with the store in-charge.' : ''); return; }
+    if (e.code === 'no_db'){ S.dbMissing = true; S.countsLoaded = true; return; }
+    if (e.code === 'network'){ S.offline = true; return; }
+    S.loadError = e.message;
+  }
+  async function refresh(){
+    if (S.busy || !S.ready) return;
+    S.busy = true;
+    try { await loadCounts(); await loadLines(); }
+    catch(e){ handleLoadErr(e); }
+    finally { S.busy = false; renderAll(); }
+  }
+  setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 12000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
+  window.addEventListener('online', refresh);
+
+  /* ---------- who is counting ---------- */
+  function showGate(needPin, msg){
+    $('#app').hidden = true; $('#gate').hidden = false;
+    $('#gName').value = S.name;
+    if (needPin) $('#gPinBox').hidden = false;
+    const e = $('#gErr'); e.hidden = !msg; e.textContent = msg || '';
+    (S.name ? (needPin ? $('#gPin') : $('#gName')) : $('#gName')).focus();
+  }
+  function showApp(){
+    $('#gate').hidden = true; $('#app').hidden = false;
+    $('#who').hidden = !S.name; $('#whoName').textContent = S.name;
+  }
+  $('#gate').addEventListener('submit', async e => {
+    e.preventDefault();
+    const name = $('#gName').value.trim();
+    const err = $('#gErr');
+    if (!name){ err.hidden = false; err.textContent = 'Enter your name so each entry shows who counted it.'; return; }
+    if (!$('#gPinBox').hidden){ S.pin = $('#gPin').value.trim(); }
+    S.name = name; LS.set('cst.name', name);
+    const btn = $('#gSubmit'); btn.disabled = true;
+    try {
+      await loadCounts();
+      LS.set('cst.pin', S.pin);
+      S.ready = true; showApp();
+      await loadLines();
+    } catch(x){
+      if (x.status === 401){ $('#gPinBox').hidden = false; err.hidden = false; err.textContent = S.pin ? 'That PIN was not accepted. Check it with the store in-charge.' : 'Enter the team PIN to open the count.'; return; }
+      handleLoadErr(x); S.ready = true; showApp();
+    } finally { btn.disabled = false; renderAll(); }
+  });
+  $('#whoChange').addEventListener('click', () => showGate(!$('#gPinBox').hidden, ''));
+
   /* ---------- access ---------- */
   function blockReason(){
-    if (S.dbMissing) return 'Sign in on claude.ai to log counts on this page. Saving needs your account.';
+    if (S.dbMissing) return 'The database isn’t connected yet. In Vercel, open this project, go to Storage, connect a Neon database, then redeploy.';
     if (!S.countsLoaded) return null;
     if (!S.countId) return 'Start a count first with New count.';
     const c = currentCount();
-    if (c && c.status === 'closed') return S.canEdit ? 'This count is closed. Reopen it from Summary to add drums.' : 'This count is closed. Ask the owner to reopen it if more drums need logging.';
-    if (S.readOnly || S.canWrite === false) return 'You can view this count but not add to it. Ask the page owner for Contributor access.';
+    if (c && c.status === 'closed') return 'This count is closed. Reopen it from Summary to add more.';
     return null;
   }
   function renderAccess(){
     const r = blockReason();
     const n = $('#notice');
-    if (r){ n.hidden = false; n.innerHTML = '<strong>Saving is off.</strong> ' + esc(r); } else n.hidden = true;
+    if (r){ n.hidden = false; n.innerHTML = '<strong>Saving is off.</strong> ' + esc(r); }
+    else if (S.offline){ n.hidden = false; n.innerHTML = '<strong>Offline.</strong> The server can’t be reached. New entries won’t save until the connection is back.'; }
+    else if (S.loadError){ n.hidden = false; n.innerHTML = '<strong>Problem.</strong> ' + esc(S.loadError); }
+    else n.hidden = true;
     const off = !!r || !S.countsLoaded;
     $('#formFields').disabled = off;
     $('#saveBtn').disabled = off;
-    const canStart = !!S.db && !S.readOnly && S.canWrite !== false;
-    $('#newCountBtn').disabled = !canStart;
+    $('#newCountBtn').disabled = S.dbMissing || !S.countsLoaded;
   }
 
   /* ---------- counts ---------- */
   function renderCounts(){
     const sel = $('#countSel');
-    if (!S.countsLoaded){ return; }
+    if (!S.countsLoaded) return;
     sel.disabled = S.counts.length === 0;
     sel.innerHTML = S.counts.length ? S.counts.map(c => '<option value="'+esc(c.id)+'">'+esc(c.name || 'Untitled count')+(c.status==='closed'?' (closed)':'')+'</option>').join('') : '<option>No counts yet</option>';
     if (S.countId) sel.value = S.countId;
     const c = currentCount();
     const meta = $('#countMeta');
     if (c){
-      const pieces = S.lines.length, m = S.lines.reduce((a,l)=>a+(l.lengthM||0),0);
+      const m = S.lines.reduce((a,l)=>a+(l.lengthM||0),0);
       meta.innerHTML = [c.site ? esc(c.site) : '', c.date ? esc(prettyDate(c.date)) : '',
         '<span class="pill '+(c.status==='closed'?'closed':'open')+'">'+(c.status==='closed'?'Closed':'Open')+'</span>',
-        pieces ? fmt(pieces)+' logged · '+fmt(m)+' m' : ''].filter(Boolean).join(' · ');
-    } else meta.textContent = S.db ? 'Create a count for the store or site you are checking, then log each drum as you go.' : '';
+        S.lines.length ? fmt(S.lines.length)+' logged · '+fmt(m)+' m' : ''].filter(Boolean).join(' · ');
+    } else meta.textContent = S.dbMissing ? '' : 'Create a count for the store or site you are checking, then log each drum as you go.';
   }
-  function selectCount(id){
-    if (S.countId === id) return;
-    S.countId = id; lsSet(LS_KEY, id || '');
-    if (S.unsubLines){ S.unsubLines(); S.unsubLines = null; }
-    S.lines = []; cancelEdit(true);
-    if (id && S.db){
-      S.unsubLines = S.db.collection('counts/'+id+'/lines').orderBy('at','desc').onSnapshot(snap => {
-        S.lines = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
-        renderAll();
-      }, err => showErr('Could not load entries for this count. Reload the page to try again.'));
-    }
-    renderAll();
+  function setCount(id){
+    if (S.countId === id) return false;
+    S.countId = id; LS.set('cst.count', id || '');
+    S.lines = []; S.linesSig = ''; cancelEdit(true);
+    return true;
   }
-  function showErr(msg){ const n = $('#notice'); n.hidden = false; n.innerHTML = '<strong>Problem.</strong> '+esc(msg); }
-
-  $('#countSel').addEventListener('change', e => selectCount(e.target.value));
+  $('#countSel').addEventListener('change', async e => {
+    if (setCount(e.target.value)){ renderAll(); try { await loadLines(); } catch(x){ handleLoadErr(x); } renderAll(); }
+  });
   $('#newCountBtn').addEventListener('click', () => {
     const f = $('#newCountForm'); f.hidden = !f.hidden;
     if (!f.hidden){
@@ -548,13 +661,13 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
     err.hidden = true;
     const btn = $('#ncSubmit'); btn.disabled = true;
     try {
-      const ref = S.db.collection('counts').doc();
-      await ref.set({ name, site: $('#ncSite').value.trim(), date: $('#ncDate').value || today(), status:'open', by: S.me && S.me.id || null, at: Date.now() });
+      const j = await api('POST', '/api/counts', { name, site: $('#ncSite').value.trim(), date: $('#ncDate').value || today(), by: S.name });
       $('#newCountForm').hidden = true; $('#ncName').value = ''; $('#ncSite').value = '';
-      selectCount(ref.id); switchTab('count');
-      toast('Count created');
+      setCount(j.id);
+      await loadCounts(); await loadLines();
+      switchTab('count'); toast('Count created');
     } catch(x){ handleWriteErr(x, err); }
-    finally { btn.disabled = false; }
+    finally { btn.disabled = false; renderAll(); }
   });
 
   /* ---------- form ---------- */
@@ -673,12 +786,9 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
   $('#editCancel').addEventListener('click', () => cancelEdit(false));
 
   function handleWriteErr(x, box){
-    const code = x && x.code;
-    let msg = 'Could not save. Check your connection and try again.';
-    if (code === 'invalid_argument' && S.canWrite !== true){ S.readOnly = true; msg = 'You can view this page but not save to it. Ask the owner for Contributor access.'; }
-    else if (code === 'quota_exceeded') msg = 'This count has hit its storage limit. Export the CSV, then start a new count.';
-    else if (code === 'revoked' || code === 'not_granted'){ S.readOnly = true; msg = 'Your access to this page changed, so saving is off.'; }
-    else if (code === 'resource_exhausted') msg = 'Too many saves in a short time. Wait a few seconds and save again.';
+    let msg = x.message || 'Could not save. Try again.';
+    if (x.status === 401){ msg = 'The team PIN was not accepted. Enter it again to keep saving.'; S.ready = false; showGate(true, msg); }
+    if (x.status === 409 || x.status === 404) refresh();
     box.hidden = false; box.textContent = msg; renderAccess();
   }
 
@@ -690,32 +800,35 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
     if (!d.tag) missing.push('tag no.');
     if (!d.type) missing.push('cable type');
     if (!d.size) missing.push('size');
-    if (d.lengthM == null) missing.push(d.method === 'marks' ? 'both sheath marks' : 'remaining length');
+    if (d.lengthM == null) missing.push(d.method === 'marks' ? 'both sheath marks' : 'length');
     if (missing.length){ err.hidden = false; err.textContent = 'Fill in ' + missing.join(', ') + ' before saving.'; return; }
     if (d.lengthM < 0){ err.hidden = false; err.textContent = 'Length cannot be negative.'; return; }
     const qraw = $('#qty').value.trim();
     if (d.pack === 'Coil' && qraw && !(/^\d+$/.test(qraw) && +qraw > 0)){ err.hidden = false; err.textContent = 'Number of coils must be a whole number, like 12.'; return; }
     err.hidden = true;
     const id = docIdForTag(d.tag);
-    const data = Object.assign(d, { by: S.me && S.me.id || null, at: Date.now() });
+    d.by = S.name;
+    const editing = S.editingId;
     const btn = $('#saveBtn'); btn.disabled = true;
     try {
-      await S.db.doc('counts/'+S.countId+'/lines/'+id).set(data);
-      if (S.editingId && S.editingId !== id){ await S.db.doc('counts/'+S.countId+'/lines/'+S.editingId).delete(); }
-      const wasEdit = !!S.editingId;
-      toast((wasEdit ? 'Updated ' : 'Saved ') + d.tag + ' · ' + fmt(d.lengthM) + ' m');
+      const j = await api('PUT', '/api/lines?count='+encodeURIComponent(S.countId)+'&id='+encodeURIComponent(id),
+        { data: d, replaces: (editing && editing !== id) ? editing : undefined });
+      const saved = j.line || Object.assign({ id }, d);
+      S.lines = [saved].concat(S.lines.filter(l => l.id !== id && l.id !== editing)); S.linesSig = '';
+      toast((editing ? 'Updated ' : 'Saved ') + d.tag + ' · ' + fmt(d.lengthM) + ' m');
       cancelEdit(true);
-      clearAfterSave(wasEdit ? false : $('#keepSpec').checked);
+      clearAfterSave(editing ? false : $('#keepSpec').checked);
+      renderAll();
       $('#tag').focus();
     } catch(x){ handleWriteErr(x, err); }
-    finally { renderAccess(); }
+    finally { btn.disabled = false; renderAccess(); }
   });
 
   /* ---------- entries ---------- */
   $('#filter').addEventListener('input', e => { S.filter = e.target.value; renderEntries(); });
   function renderEntries(){
     const q = S.filter.trim().toLowerCase();
-    const rows = S.lines.filter(l => !q || [l.tag, specLabel(l), l.type, l.location, l.make, l.condition].join(' ').toLowerCase().includes(q));
+    const rows = S.lines.filter(l => !q || [l.tag, specLabel(l), l.type, l.location, l.make, l.condition, l.by].join(' ').toLowerCase().includes(q));
     const canAct = !blockReason();
     $('#entryList').innerHTML = rows.map(l => {
       const flag = l.condition && l.condition !== 'Good' ? '<span class="flag">'+esc(l.condition)+'</span>' : '';
@@ -723,22 +836,14 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
         '<span class="e-tag">'+esc(l.tag)+'</span><span class="e-len">'+fmt(l.lengthM)+' m</span>'+
         '<span class="e-spec">'+esc(specLabel(l))+' <span class="t">· '+esc(l.type || '')+(l.make ? ' · '+esc(l.make) : '')+'</span></span>'+
         '<span class="e-meta"><span>'+(pieceQty(l) > 1 ? esc(pieceQty(l)+' coils × '+fmt(l.perM)+' m') : esc(l.pack || 'Drum'))+'</span><span>'+esc(l.location || 'No location')+'</span>'+
-          (l.by ? '<span data-uid="'+esc(l.by)+'">…</span>' : '')+'<span>'+esc(timeOf(l.at))+'</span>'+flag+'</span>'+
+          (l.by ? '<span>'+esc(l.by)+'</span>' : '')+'<span>'+esc(timeOf(l.at))+'</span>'+flag+'</span>'+
         (canAct ? '<span class="e-act"><button type="button" class="btn small" data-edit="'+esc(l.id)+'">Edit</button><button type="button" class="btn small danger" data-del="'+esc(l.id)+'">Delete</button></span>' : '')+
       '</li>';
     }).join('');
     const empty = $('#entriesEmpty');
     empty.hidden = rows.length > 0;
-    if (!rows.length && S.lines.length){ empty.querySelector('h3').textContent = 'No matches'; empty.querySelector('p').textContent = 'Nothing logged matches “'+S.filter+'”. Try a tag, size like 95, or a location.'; }
-    else if (!rows.length){ empty.querySelector('h3').textContent = 'No drums logged yet'; empty.querySelector('p').textContent = 'Each drum or coil you save on the Count tab appears here with its length, location and who counted it.'; }
-    paintNames();
-  }
-  async function paintNames(){
-    const spans = $$('[data-uid]'); if (!spans.length) return;
-    if (!S.user){ spans.forEach(s => s.textContent = 'Counted'); return; }
-    const ids = Array.from(new Set(spans.map(s => s.dataset.uid)));
-    const ps = await S.user.profiles(ids);
-    spans.forEach(s => { const p = ps[s.dataset.uid]; s.textContent = p ? (p.isMe ? 'You' : (p.name || 'Someone')) : 'Someone'; });
+    if (!rows.length && S.lines.length){ empty.querySelector('h3').textContent = 'No matches'; empty.querySelector('p').textContent = 'Nothing logged matches “'+S.filter+'”. Try a tag, a size like 95, or a location.'; }
+    else if (!rows.length){ empty.querySelector('h3').textContent = 'Nothing logged yet'; empty.querySelector('p').textContent = 'Each drum or coil you save on the Count tab appears here with its length, location and who counted it.'; }
   }
   $('#entryList').addEventListener('click', async e => {
     const ed = e.target.closest('[data-edit]'); if (ed){ startEdit(ed.dataset.edit); return; }
@@ -749,8 +854,14 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
       return;
     }
     del.disabled = true;
-    try { await S.db.doc('counts/'+S.countId+'/lines/'+del.dataset.del).delete(); toast('Entry deleted'); if (S.editingId === del.dataset.del) cancelEdit(false); }
-    catch(x){ toast('Could not delete. Try again.'); del.disabled = false; }
+    const id = del.dataset.del;
+    try {
+      await api('DELETE', '/api/lines?count='+encodeURIComponent(S.countId)+'&id='+encodeURIComponent(id));
+      S.lines = S.lines.filter(l => l.id !== id); S.linesSig = '';
+      toast('Entry deleted');
+      if (S.editingId === id) cancelEdit(false);
+      renderAll();
+    } catch(x){ toast(x.status === 409 ? 'This count is closed.' : 'Could not delete. Try again.'); del.disabled = false; }
   });
 
   /* ---------- summary ---------- */
@@ -777,45 +888,48 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
     });
     const gs = Array.from(groups.values()).sort((a,b) => b.m - a.m);
     $('#specBody').innerHTML = gs.length ? gs.map(g => '<tr><td><span class="sp">'+esc(g.spec)+'</span><span class="ty">'+esc(g.type || '')+'</span></td><td class="num">'+fmt(g.drums)+'</td><td class="num">'+fmt(g.other)+'</td><td class="num">'+fmt(g.m)+'</td></tr>').join('')
-      : '<tr><td colspan="4" style="color:var(--muted)">Totals by cable size appear once drums are logged.</td></tr>';
+      : '<tr><td colspan="4" style="color:var(--muted)">Totals by cable size appear once entries are logged.</td></tr>';
     $('#specFoot').innerHTML = gs.length ? '<tr><td>Total</td><td class="num">'+fmt(drums)+'</td><td class="num">'+fmt(coils + cuts)+'</td><td class="num">'+fmt(total)+'</td></tr>' : '';
 
     const locs = new Map();
     L.forEach(l => { const k = l.location || 'No location'; const g = locs.get(k) || {n:0,m:0}; g.n += pieceQty(l); g.m += l.lengthM || 0; locs.set(k,g); });
     const ls = Array.from(locs.entries()).sort((a,b) => a[0].localeCompare(b[0], 'en', {numeric:true}));
     $('#locBody').innerHTML = ls.length ? ls.map(([k,g]) => '<tr><td>'+esc(k)+'</td><td class="num">'+fmt(g.n)+'</td><td class="num">'+fmt(g.m)+'</td></tr>').join('')
-      : '<tr><td colspan="3" style="color:var(--muted)">Locations appear once drums are logged.</td></tr>';
+      : '<tr><td colspan="3" style="color:var(--muted)">Locations appear once entries are logged.</td></tr>';
 
     const c = currentCount();
     const cb = $('#closeBtn');
-    cb.hidden = !(c && S.canEdit);
+    cb.hidden = !c;
     if (c) cb.textContent = c.status === 'closed' ? 'Reopen this count' : 'Close this count';
+    $('#exportBtn').hidden = !c;
     $('#exportBtn').disabled = !L.length;
   }
   $('#closeBtn').addEventListener('click', async () => {
     const c = currentCount(); if (!c) return;
     const closing = c.status !== 'closed';
-    try { await S.db.doc('counts/'+c.id).update(closing ? {status:'closed', closedAt: Date.now(), closedBy: S.me && S.me.id || null} : {status:'open'}); toast(closing ? 'Count closed' : 'Count reopened'); }
+    const cb = $('#closeBtn'); cb.disabled = true;
+    try { await api('PATCH', '/api/counts?id='+encodeURIComponent(c.id), { status: closing ? 'closed' : 'open', by: S.name }); toast(closing ? 'Count closed' : 'Count reopened'); await loadCounts(); }
     catch(x){ toast('Could not update the count. Try again.'); }
+    finally { cb.disabled = false; renderAll(); }
   });
 
   function csvCell(v){ const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
-  $('#exportBtn').addEventListener('click', async () => {
-    const dl = S.downloads; if (!dl) return;
+  $('#exportBtn').addEventListener('click', () => {
     const c = currentCount() || {};
-    let names = {};
-    if (S.user){ const ids = Array.from(new Set(S.lines.map(l => l.by).filter(Boolean))); if (ids.length) names = await S.user.profiles(ids); }
     const head = ['Tag','Package','Pieces','Cable type','Spec','Conductor','Cores','Size (sq mm)','Armour','Insulation','Colour','Make','Length method','Outer mark (m)','Inner mark (m)','Length per piece (m)','Total metres','Full drum/coil length (m)','Location','Condition','Remarks','Counted by','Counted at'];
     const methodL = {marks:'Sheath marks', label:'From label', measured:'Measured', estimated:'Estimated'};
     const rows = S.lines.slice().sort((a,b) => (a.tag||'').localeCompare(b.tag||'', 'en', {numeric:true})).map(l => [
       l.tag, l.pack, pieceQty(l), l.type, specLabel(l), l.conductor, l.cores, l.size, l.armour, l.insulation, l.colour, l.make, methodL[l.method] || l.method,
       l.markOuter, l.markInner, l.perM != null ? l.perM : l.lengthM, l.lengthM, l.origM, l.location, l.condition, l.remarks,
-      l.by ? ((names[l.by] && names[l.by].name) || '') : '', l.at ? new Date(l.at).toLocaleString('en-IN') : ''
+      l.by || '', l.at ? new Date(l.at).toLocaleString('en-IN') : ''
     ]);
     const csv = '﻿' + [head].concat(rows).map(r => r.map(csvCell).join(',')).join('\r\n');
     const slug = (c.name || 'cable-count').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-    try { await dl.save({ filename: slug + '.csv', data: csv }); toast('CSV saved'); }
-    catch(x){ if (x && x.code === 'declined') return; toast(x && x.code === 'rate_limited' ? 'A save is already open. Try again in a moment.' : 'Could not save the file.'); }
+    const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+    const a = document.createElement('a'); a.href = url; a.download = slug + '.csv';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
+    toast('CSV downloaded');
   });
 
   /* ---------- tabs ---------- */
@@ -837,6 +951,7 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
     renderCounts(); renderAccess();
     $('#nEntries').textContent = S.lines.length;
     renderEntries(); renderSummary(); fillDatalists(); checkDup();
+    if (S.ready && S.countsLoaded && !S.counts.length && !S.dbMissing && !S.autoOpened && $('#newCountForm').hidden){ S.autoOpened = true; $('#newCountBtn').click(); }
   }
 
   updatePackUI();
@@ -844,36 +959,21 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
 
   /* ---------- boot ---------- */
   (async function boot(){
-    const C = window.claude;
-    const use = n => (C && typeof C.use === 'function') ? C.use(n).catch(() => null) : Promise.resolve(null);
-    const [db, user, downloads] = await Promise.all([use('db'), use('user'), use('downloads')]);
-    S.downloads = downloads;
-    S.user = user;
-    $('#exportBtn').hidden = !downloads;
-    if (user){
-      S.me = await user.me();
-      S.canEdit = !!S.me.canEdit;
-      S.canWrite = await user.can('data.write');
-    }
-    if (!db){
-      S.dbMissing = true; S.countsLoaded = true;
-      $('#countSel').innerHTML = '<option>Sign in to load counts</option>';
-      renderAll(); return;
-    }
-    S.db = db;
-    db.collection('counts').orderBy('at','desc').onSnapshot(snap => {
-      S.counts = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
-      S.countsLoaded = true;
-      if (!S.countId || !S.counts.find(c => c.id === S.countId)){
-        const saved = lsGet(LS_KEY);
-        const pick = S.counts.find(c => c.id === saved) || S.counts.find(c => c.status !== 'closed') || S.counts[0];
-        selectCount(pick ? pick.id : null);
-      }
-      renderAll();
-      if (!S.counts.length && !S.autoOpened && !S.readOnly && S.canWrite !== false && $('#newCountForm').hidden){ S.autoOpened = true; $('#newCountBtn').click(); }
-    }, err => showErr('Could not load counts. Reload the page to try again.'));
+    S.name = LS.get('cst.name'); S.pin = LS.get('cst.pin');
+    try {
+      await loadCounts();
+      if (!S.name){ showGate(false, ''); return; }
+      S.ready = true; showApp();
+      await loadLines();
+    } catch(e){
+      if (e.status === 401){ showGate(true, S.pin ? 'That PIN was not accepted. Check it with the store in-charge.' : ''); return; }
+      handleLoadErr(e);
+      if (!S.name){ showGate(false, ''); return; }
+      S.ready = true; showApp();
+    } finally { renderAll(); }
   })();
 })();
 </script>
 
-</body></html>
+</body>
+</html>
