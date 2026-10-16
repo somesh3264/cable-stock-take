@@ -17,9 +17,10 @@ A phone-friendly form for physical stock counts of wire and cable: drums, coils 
 
 ## Stack
 
-- `index.html`: the whole front end, no build step
+- `index.html`, `app.css`, `app.js`: the front end, no build step
 - `api/counts.js`, `api/lines.js`: Vercel Functions
 - Postgres through `@neondatabase/serverless`. Tables (`cst_counts`, `cst_lines`) are created automatically on first use.
+- Functions run in Singapore (`sin1`); pick the Singapore region for the Neon database too.
 
 ## Setup on Vercel
 
