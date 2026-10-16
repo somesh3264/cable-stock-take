@@ -923,7 +923,7 @@ tfoot td{font-weight:600;border-top:2px solid var(--line)}
       l.markOuter, l.markInner, l.perM != null ? l.perM : l.lengthM, l.lengthM, l.origM, l.location, l.condition, l.remarks,
       l.by || '', l.at ? new Date(l.at).toLocaleString('en-IN') : ''
     ]);
-    const csv = '﻿' + [head].concat(rows).map(r => r.map(csvCell).join(',')).join('\r\n');
+    const csv = '\ufeff' + [head].concat(rows).map(r => r.map(csvCell).join(',')).join('\r\n');
     const slug = (c.name || 'cable-count').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
     const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
     const a = document.createElement('a'); a.href = url; a.download = slug + '.csv';
