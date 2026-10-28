@@ -1,3 +1,4 @@
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { q } from './db.js';
 
 /* Shared Tally helpers. groupKey, pieceQty and unitBasis are mirrored in app.js; keep them identical. */
@@ -110,6 +111,41 @@ export async function signalAgent() {
     console.error('Tally signal failed', err);
     return null;
   }
+}
+
+/*
+ * Connector key. The app creates it and hands it out once inside config.json; only its
+ * SHA-256 hash is stored. TALLY_SYNC_KEY in the environment also works, as an override.
+ */
+const sha256 = s => createHash('sha256').update(String(s)).digest();
+
+export function newAgentKey() {
+  const key = 'cst_' + randomBytes(32).toString('base64url');
+  return { key, hash: sha256(key).toString('hex') };
+}
+
+export async function agentKeyState() {
+  const s = await getState('agentKey');
+  return s && s.hash ? s : null;
+}
+
+export async function agentKeyOk(got) {
+  got = String(got || '');
+  if (!got) return false;
+  const env = process.env.TALLY_SYNC_KEY || '';
+  if (env) {
+    const a = Buffer.from(got), b = Buffer.from(env);
+    if (a.length === b.length && timingSafeEqual(a, b)) return true;
+  }
+  const s = await agentKeyState();
+  if (!s) return false;
+  const want = Buffer.from(s.hash, 'hex');
+  const have = sha256(got);
+  return want.length === have.length && timingSafeEqual(want, have);
+}
+
+export async function syncConfigured() {
+  return !!process.env.TALLY_SYNC_KEY || !!(await agentKeyState());
 }
 
 export const todayIST = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);

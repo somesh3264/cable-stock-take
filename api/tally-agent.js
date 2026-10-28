@@ -1,19 +1,11 @@
-import { timingSafeEqual } from 'node:crypto';
 import { q, dbConfigured } from './_lib/db.js';
 import { send, bad, str } from './_lib/http.js';
-import { getState, setState, todayIST } from './_lib/tally.js';
+import { getState, setState, todayIST, agentKeyOk, syncConfigured } from './_lib/tally.js';
 
-/* Endpoint for the connector running on the Tally PC. Authenticated by TALLY_SYNC_KEY, not the team PIN. */
+/* Endpoint for the connector running on the Tally PC. Authenticated by the connector key, not the team PIN. */
 
 const STALE_RUNNING_MS = 15 * 60 * 1000;
 const QUEUE_EXPIRY_MS = 24 * 3600 * 1000;
-
-function keyOk(req) {
-  const key = process.env.TALLY_SYNC_KEY || '';
-  const got = String(req.headers['x-sync-key'] || '');
-  const a = Buffer.from(got), b = Buffer.from(key);
-  return key.length > 0 && a.length === b.length && timingSafeEqual(a, b);
-}
 
 const num = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
@@ -33,11 +25,13 @@ function agentInfo(a) {
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   try {
-    if (!process.env.TALLY_SYNC_KEY) {
-      return send(res, 503, { error: 'not_configured', message: 'Tally sync is not switched on for this app (TALLY_SYNC_KEY is missing).' });
-    }
-    if (!keyOk(req)) return send(res, 401, { error: 'key', message: 'Sync key not accepted. Check syncKey in config.json.' });
     if (!dbConfigured()) return send(res, 503, { error: 'no_db', message: 'The app database is not connected.' });
+    if (!(await syncConfigured())) {
+      return send(res, 503, { error: 'not_configured', message: 'No connector key yet. Create one in the app: Tally tab, Create connector file.' });
+    }
+    if (!(await agentKeyOk(req.headers['x-sync-key']))) {
+      return send(res, 401, { error: 'key', message: 'Connector key not accepted. It may have been replaced in the app. Download a new config.json from the Tally tab.' });
+    }
     if (req.method !== 'POST') {
       res.setHeader('Allow', 'POST');
       return send(res, 405, { error: 'method', message: 'Use POST.' });

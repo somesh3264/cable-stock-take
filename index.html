@@ -323,13 +323,19 @@
         <button type="button" class="btn small" id="tPull" disabled>Refresh book stock</button>
       </div>
       <div class="tsetup" id="tSetup" hidden>
-        <p><b>Set up the Tally connector</b> on the PC where TallyPrime runs:</p>
+        <p><b>Set up the Tally connector</b> once, on the PC where TallyPrime runs:</p>
         <ol>
           <li>In TallyPrime, open <b>F1 (Help) → Settings → Connectivity → Client/Server configuration</b>. Set <b>TallyPrime is acting as</b> to <b>Both</b> and <b>Port</b> to <b>9000</b>, then restart Tally. Keep your company open.</li>
           <li>Install <b>Node.js LTS</b> from nodejs.org on that PC.</li>
-          <li>Unzip the connector folder you received, then double-click <b>start-connector.bat</b>. Run <b>install-autostart.bat</b> once to start it with Windows.</li>
+          <li>Unzip the <b>tally-connector</b> folder onto that PC.</li>
+          <li>Open this app on that PC and tap <b>Create connector file</b> below. Save the downloaded <b>config.json</b> into the tally-connector folder (rename it to config.json if the browser added a number).</li>
+          <li>Double-click <b>start-connector.bat</b>. Run <b>install-autostart.bat</b> once so it starts with Windows.</li>
         </ol>
         <p class="hint">Once it checks in, this panel turns green and book stock appears below.</p>
+      </div>
+      <div class="trow tkey" id="tKeyRow" hidden>
+        <span class="hint" id="tKeyInfo"></span>
+        <button type="button" class="btn small" id="tKeyBtn">Create connector file</button>
       </div>
     </div>
 

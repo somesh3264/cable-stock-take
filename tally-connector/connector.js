@@ -48,12 +48,12 @@ function log(...args) {
 function loadConfig() {
   let raw;
   try { raw = fs.readFileSync(CONFIG_PATH, 'utf8'); }
-  catch (e) { throw new Error(`Cannot read ${CONFIG_PATH}. Copy config.example.json to config.json and fill it in.`); }
+  catch (e) { throw new Error(`Cannot read ${CONFIG_PATH}. In the app, open the Tally tab, tap Create connector file, and save config.json into this folder.`); }
   let cfg;
   try { cfg = JSON.parse(raw.replace(/^\uFEFF/, '')); }
   catch (e) { throw new Error(`config.json is not valid JSON: ${e.message}`); }
   cfg = Object.assign({}, DEFAULTS, cfg);
-  if (!cfg.syncKey) throw new Error('syncKey is empty in config.json.');
+  if (!cfg.syncKey || /PASTE/i.test(cfg.syncKey)) throw new Error('config.json has no connector key. Download it from the app: Tally tab, Create connector file.');
   cfg.appUrl = String(cfg.appUrl).replace(/\/+$/, '');
   cfg.tallyUrl = String(cfg.tallyUrl).replace(/\/+$/, '');
   cfg.pollSeconds = Math.max(10, Number(cfg.pollSeconds) || 30);

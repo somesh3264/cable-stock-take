@@ -593,7 +593,7 @@
   function agentState(){
     const d = T.data;
     if (!d) return { dot:'', title: T.err ? 'Could not load Tally sync status' : 'Checking the Tally connection…', sub: T.err || '' };
-    if (!d.configured) return { dot:'', title:'Tally sync isn’t switched on for this app yet', sub:'The sync key has to be added to the app’s settings first.' };
+    if (!d.configured) return { dot:'', title:'Tally connector not set up yet', sub:'Set it up once on the PC where TallyPrime runs. Book stock and posting start working once it checks in.', setup:true };
     const a = d.agent;
     if (!a || !a.lastSeen) return { dot:'', title:'Tally connector not set up yet', sub:'Book stock and posting start working once the connector checks in.', setup:true };
     const online = Date.now() - a.lastSeen < 75*60*1000;
@@ -622,6 +622,7 @@
     $('#tAgent').textContent = st.title;
     $('#tAgentSub').textContent = st.sub || '';
     $('#tSetup').hidden = !st.setup;
+    renderKeyRow();
     const snap = d && d.snapshot;
     const items = (snap && snap.items) || [];
     const itemMap = new Map(items.map(i => [i.name, i]));
@@ -629,6 +630,7 @@
       const off = c && c.date && snap.asOf !== c.date ? ' This count is dated ' + prettyDate(c.date) + '; refresh to compare on the same date.' : '';
       $('#tBook').textContent = 'Book stock as of ' + prettyDate(snap.asOf) + ' · ' + items.length + ' items · pulled ' + ago(snap.pulledAt) + '.' + off;
     } else $('#tBook').textContent = d && d.configured ? 'No book stock from Tally yet.' : '';
+    $('#tPull').hidden = !(d && d.configured);
     $('#tPull').disabled = !(d && d.configured && c);
 
     // datalist of Tally items
@@ -687,7 +689,7 @@
     const godown = (a && a.godown) || 'Main Location';
     const pending = d && d.jobs.find(j => j.type === 'post' && c && j.countId === c.id && (j.status === 'queued' || j.status === 'running'));
     let info;
-    if (!d || !d.configured) info = 'Posting needs Tally sync to be switched on.';
+    if (!d || !d.configured) info = 'Posting works once the Tally connector is set up.';
     else if (!items.length) info = 'Pull book stock first, then match the cables to Tally items.';
     else if (!rows.length) info = 'Save at least one match to post.';
     else info = 'Creates a Physical Stock voucher in Tally dated ' + prettyDate((c && c.date) || snap.asOf) + ' for godown "' + godown + '", setting ' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ' to the counted quantity. Tally adjusts closing stock for these items only.' +
@@ -714,6 +716,43 @@
         extra + (j.status === 'queued' ? '<div><button type="button" class="btn small" data-tcancel="'+esc(j.id)+'">Cancel</button></div>' : '') + '</li>';
     }).join('');
   }
+
+  function renderKeyRow(){
+    const d = T.data, row = $('#tKeyRow'), b = $('#tKeyBtn');
+    row.hidden = !d;
+    if (!d) return;
+    const k = d.key;
+    $('#tKeyInfo').textContent = !k ? 'The connector needs its own key, inside config.json.'
+      : k.env ? 'The connector uses the key set in the app’s Vercel settings.'
+      : 'Connector key created ' + ago(k.createdAt) + (k.by ? ' by ' + k.by : '') + '. Replacing it disconnects the current connector until it gets the new file.';
+    if (!b.classList.contains('armed')) b.textContent = k && !k.env ? 'Replace connector file' : 'Create connector file';
+  }
+  function downloadJson(name, obj){
+    const blob = new Blob([JSON.stringify(obj, null, 2) + '\n'], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name; a.hidden = true;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+  $('#tKeyBtn').addEventListener('click', async () => {
+    const b = $('#tKeyBtn');
+    const k = T.data && T.data.key;
+    const replace = !!(k && !k.env);
+    if (replace && !b.classList.contains('armed')){
+      b.classList.add('armed'); b.textContent = 'Tap again to replace the key';
+      clearTimeout(T.keyTimer);
+      T.keyTimer = setTimeout(() => { b.classList.remove('armed'); renderKeyRow(); }, 5000);
+      return;
+    }
+    clearTimeout(T.keyTimer); b.classList.remove('armed'); b.disabled = true;
+    try {
+      const j = await api('POST', '/api/tally', { action:'key', replace, by: S.name });
+      downloadJson('config.json', j.config);
+      toast('config.json downloaded. Put it in the tally-connector folder.');
+      await loadTally();
+    } catch(x){ toast(x.message); }
+    b.disabled = false; renderKeyRow();
+  });
 
   function groupLabel(g){
     const l = g.sample;

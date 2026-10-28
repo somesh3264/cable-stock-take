@@ -23,13 +23,15 @@ ONE-TIME SETUP
 
 3. Put this folder somewhere permanent, for example C:\CableStockTake\tally-connector
 
-4. config.json is already filled in. Change these only if needed:
+4. On this PC, open the app, go to the Tally tab and tap "Create connector file".
+   Save the downloaded config.json into this folder. If the browser saved it as
+   "config (1).json", rename it to config.json. It holds the connector's private key,
+   so do not share it. You can change these settings in it with Notepad:
      company      Leave empty to use the company open in Tally, or type the exact
                   company name if several are open.
      godown       The godown the counted stock is posted to. Default "Main Location".
                   If you do not use godowns in Tally, leave it as "Main Location".
      tallyUrl     Change only if Tally uses a port other than 9000.
-   Keep syncKey private: it lets this connector write to the app.
 
 5. Double-click start-connector.bat. A black window opens and shows what it is doing.
    Keep it open (minimise it). Within a minute the app's Tally tab turns green.
@@ -64,7 +66,8 @@ IF SOMETHING IS WRONG
 ---------------------
 "Cannot reach TallyPrime"   Tally is closed, or the XML server port is not 9000
                             (see setup step 1).
-"Sync key not accepted"     syncKey in config.json does not match the app.
+"Key not accepted"          The key was replaced in the app. Download a new
+                            config.json from the Tally tab.
 "Cannot reach the app"      No internet on this PC, or a firewall blocks it.
 Jobs stay "Waiting"         The connector window is closed. Start it again; waiting
                             jobs run when it is back (they expire after 24 hours).

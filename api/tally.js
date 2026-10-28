@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { q } from './_lib/db.js';
 import { guard, send, bad, str } from './_lib/http.js';
-import { buildEntries, getState, signalAgent, todayIST } from './_lib/tally.js';
+import { buildEntries, getState, setState, signalAgent, todayIST, newAgentKey, agentKeyState } from './_lib/tally.js';
 
 const JOB_COLS = 'id, type, count_id, as_of, status, result, created_by, created_at, updated_at';
 const mapJob = r => ({
@@ -26,14 +26,16 @@ async function loadMaps() {
 export default function handler(req, res) {
   return guard(req, res, async () => {
     if (req.method === 'GET') {
-      const [agent, snapshot, maps, jobs] = await Promise.all([
+      const [agent, snapshot, maps, jobs, key] = await Promise.all([
         getState('agent'),
         getState('snapshot'),
         loadMaps(),
         q(`SELECT ${JOB_COLS} FROM cst_tally_jobs ORDER BY created_at DESC LIMIT 12`),
+        agentKeyState(),
       ]);
       return send(res, 200, {
-        configured: !!process.env.TALLY_SYNC_KEY,
+        configured: !!process.env.TALLY_SYNC_KEY || !!key,
+        key: key ? { createdAt: key.createdAt, by: key.by } : (process.env.TALLY_SYNC_KEY ? { env: true } : null),
         agent: agent || null,
         snapshot: snapshot || null,
         maps,
@@ -126,6 +128,34 @@ export default function handler(req, res) {
         job: { id, type: action, countId, asOf, status: 'queued', result: null, by, at: now, updatedAt: now },
         summary,
         signalled,
+      });
+    }
+
+    if (action === 'key') {
+      // Creates the connector key and returns it once, inside the connector's config.json.
+      const existing = await agentKeyState();
+      if (existing && b.replace !== true) {
+        return send(res, 409, { error: 'exists', message: 'A connector key already exists. Replacing it disconnects the current connector until it gets the new config.json.' });
+      }
+      const { key, hash } = newAgentKey();
+      await setState('agentKey', { hash, createdAt: Date.now(), by });
+      // The production domain, so the connector is not pointed at a protected preview URL.
+      const host = process.env.VERCEL_PROJECT_PRODUCTION_URL
+        || String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim()
+        || 'cable-stock-take.vercel.app';
+      const appUrl = (/^(localhost|127\.)/.test(host) ? 'http://' : 'https://') + host;
+      return send(res, 201, {
+        replaced: !!existing,
+        config: {
+          appUrl,
+          syncKey: key,
+          tallyUrl: 'http://localhost:9000',
+          company: '',
+          godown: 'Main Location',
+          batch: 'Primary Batch',
+          voucherType: 'Physical Stock',
+          pollSeconds: 30,
+        },
       });
     }
 

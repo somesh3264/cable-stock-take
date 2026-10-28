@@ -46,8 +46,9 @@ Two-way sync with TallyPrime through a small connector on the PC where Tally run
 
 **Setup**
 
-1. In Vercel, connect a public Blob store to the project, and add `TALLY_SYNC_KEY` (a long random string) as an environment variable. Redeploy.
-2. On the Tally PC: in TallyPrime, set **F1 (Help) → Settings → Connectivity → Client/Server configuration** to **Both** on port **9000**. Install Node.js LTS.
-3. Copy the `tally-connector` folder to that PC, copy `config.example.json` to `config.json`, and put the same sync key in `syncKey`. Run `start-connector.bat`, and `install-autostart.bat` once to start it at sign-in.
+1. In Vercel, connect a public Blob store to the project (it adds `BLOB_READ_WRITE_TOKEN`) and redeploy. Without it the connector still works, checking for work every 10 minutes instead of within a minute.
+2. On the Tally PC: in TallyPrime, set **F1 (Help) → Settings → Connectivity → Client/Server configuration** to **Both** on port **9000**. Install Node.js LTS and copy the `tally-connector` folder there.
+3. On that PC, open the app's Tally tab and tap **Create connector file**. Save the downloaded `config.json` into the `tally-connector` folder. The app keeps only a hash of the key, and replacing the file in the app disconnects the old one. (A `TALLY_SYNC_KEY` environment variable also works as a fixed key.)
+4. Run `start-connector.bat`, and `install-autostart.bat` once to start it at sign-in.
 
 See `tally-connector/README.txt` for the settings and troubleshooting.

@@ -9,7 +9,8 @@ if errorlevel 1 (
   exit /b 1
 )
 if not exist config.json (
-  echo config.json is missing. Copy config.example.json to config.json and fill in the sync key.
+  echo config.json is missing from this folder.
+  echo In the app, open the Tally tab, tap Create connector file, and save config.json here.
   pause
   exit /b 1
 )
