@@ -86,6 +86,7 @@
     <button type="button" class="tab" role="tab" id="tabbtn-count" aria-controls="tab-count" aria-selected="true">Count</button>
     <button type="button" class="tab" role="tab" id="tabbtn-entries" aria-controls="tab-entries" aria-selected="false">Entries<span class="n" id="nEntries">0</span></button>
     <button type="button" class="tab" role="tab" id="tabbtn-summary" aria-controls="tab-summary" aria-selected="false">Summary</button>
+    <button type="button" class="tab" role="tab" id="tabbtn-tally" aria-controls="tab-tally" aria-selected="false">Tally</button>
   </nav>
 
   <!-- COUNT -->
@@ -308,6 +309,71 @@
       <button type="button" class="btn" id="closeBtn" hidden>Close this count</button>
     </div>
   </section>
+
+  <!-- TALLY -->
+  <section id="tab-tally" role="tabpanel" aria-labelledby="tabbtn-tally" hidden>
+    <div class="panel tsec">
+      <div class="trow">
+        <span class="tdot" id="tDot" aria-hidden="true"></span>
+        <div class="tmeta">
+          <b id="tAgent">Checking the Tally connection…</b>
+          <span class="hint" id="tAgentSub"></span>
+          <span class="hint" id="tBook"></span>
+        </div>
+        <button type="button" class="btn small" id="tPull" disabled>Refresh book stock</button>
+      </div>
+      <div class="tsetup" id="tSetup" hidden>
+        <p><b>Set up the Tally connector</b> on the PC where TallyPrime runs:</p>
+        <ol>
+          <li>In TallyPrime, open <b>F1 (Help) → Settings → Connectivity → Client/Server configuration</b>. Set <b>TallyPrime is acting as</b> to <b>Both</b> and <b>Port</b> to <b>9000</b>, then restart Tally. Keep your company open.</li>
+          <li>Install <b>Node.js LTS</b> from nodejs.org on that PC.</li>
+          <li>Unzip the connector folder you received, then double-click <b>start-connector.bat</b>. Run <b>install-autostart.bat</b> once to start it with Windows.</li>
+        </ol>
+        <p class="hint">Once it checks in, this panel turns green and book stock appears below.</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="sumhead"><h3>Match to Tally items</h3><span class="hint" id="tMatchCount"></span></div>
+      <p class="hint tpad">Pick the Tally stock item for each cable in this count. Likely matches are filled in for you, so check them and save. Several cables can share one Tally item.</p>
+      <div class="tpad" id="tFilterWrap" hidden>
+        <label class="keep" for="tUnmatchedOnly"><input type="checkbox" id="tUnmatchedOnly"> Show only cables that still need a match</label>
+      </div>
+      <ul class="tmatch" id="tMatchList"></ul>
+      <div class="emptybox" id="tMatchEmpty" hidden><p></p></div>
+      <div class="tactions">
+        <p class="err" id="tSaveErr" hidden></p>
+        <button type="button" class="btn primary" id="tSave" disabled>Save matches</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="sumhead"><h3>Book vs counted</h3><span class="hint" id="tCmpNote"></span></div>
+      <div class="tblwrap">
+        <table class="tcmp">
+          <thead><tr><th>Tally item</th><th class="num">Book</th><th class="num">Counted</th><th class="num">Difference</th></tr></thead>
+          <tbody id="tCmpBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="sumhead"><h3>In Tally, not counted</h3><span class="hint" id="tMissCount"></span></div>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th>Tally item</th><th class="num">Book</th></tr></thead>
+          <tbody id="tMissBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel tsec">
+      <h3 class="tsech">Post to Tally</h3>
+      <p class="hint" id="tPostInfo"></p>
+      <div><button type="button" class="btn primary" id="tPost" disabled>Post Physical Stock</button></div>
+      <ul class="tjobs" id="tJobs"></ul>
+    </div>
+  </section>
   </div>
 </div>
 
@@ -315,6 +381,7 @@
 <datalist id="sizeList"><option value="0.5"></option><option value="0.75"></option><option value="1"></option><option value="1.5"></option><option value="2.5"></option><option value="4"></option><option value="6"></option><option value="10"></option><option value="16"></option><option value="25"></option><option value="35"></option><option value="50"></option><option value="70"></option><option value="95"></option><option value="120"></option><option value="150"></option><option value="185"></option><option value="240"></option><option value="300"></option><option value="400"></option></datalist>
 <datalist id="makeList"></datalist>
 <datalist id="locList"></datalist>
+<datalist id="tItems"></datalist>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

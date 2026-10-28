@@ -1,0 +1,9 @@
+{
+  "name": "cst-tally-connector",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Links TallyPrime to the Cable Stock Take app",
+  "type": "commonjs",
+  "main": "connector.js",
+  "scripts": { "start": "node connector.js" }
+}

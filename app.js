@@ -456,14 +456,359 @@
     toast('CSV downloaded');
   });
 
+  /* ---------- tally ---------- */
+  // groupKey, unitBasis and buildEntries mirror api/_lib/tally.js; keep them identical.
+  const T = { data: null, loading: false, dirty: new Map(), suggested: new Set(), timer: null, armTimer: null, renderedLines: null, err: '' };
+  const tnorm = v => String(v == null ? '' : v).trim().toLowerCase();
+  function groupKey(l){
+    const len = l.pack === 'Coil' ? (l.origM != null ? l.origM : l.perM) : '';
+    return [l.make, l.type, l.conductor, l.cores, l.size, l.insulation, l.colour, len == null ? '' : len].map(tnorm).join('|');
+  }
+  const METRE_U = new Set(['m','mt','mts','mtr','mtrs','meter','meters','metre','metres','rmt','rm','lm','rmtr']);
+  const WEIGHT_U = new Set(['kg','kgs','g','gm','gms','gram','grams','ton','tons','tonne','tonnes','qtl','mg']);
+  function unitBasis(u){
+    const s = tnorm(u).replace(/[^a-z]/g,'');
+    if (!s) return 'count';
+    if (METRE_U.has(s)) return 'metres';
+    if (WEIGHT_U.has(s)) return 'weight';
+    return 'count';
+  }
+  function tallyGroups(){
+    const m = new Map();
+    S.lines.forEach(l => { const k = groupKey(l); if (!m.has(k)) m.set(k, { key:k, sample:l, lines:[] }); m.get(k).lines.push(l); });
+    return Array.from(m.values()).map(g => Object.assign(g, {
+      rolls: g.lines.reduce((a,l) => a + pieceQty(l), 0),
+      metres: Math.round(g.lines.reduce((a,l) => a + (Number(l.lengthM) || 0), 0) * 1000) / 1000
+    })).sort((a,b) => (a.sample.make||'').localeCompare(b.sample.make||'') || (parseFloat(a.sample.size)||0) - (parseFloat(b.sample.size)||0) || (a.sample.colour||'').localeCompare(b.sample.colour||''));
+  }
+  function buildEntries(maps){
+    const items = (T.data && T.data.snapshot && T.data.snapshot.items) || [];
+    const byName = new Map(items.map(i => [i.name, i]));
+    const mapByKey = new Map(maps.map(m => [m.key, m.item]));
+    const entries = new Map(); let unmatched = 0; const problems = [];
+    tallyGroups().forEach(g => {
+      const name = mapByKey.get(g.key);
+      if (!name){ unmatched++; return; }
+      const it = byName.get(name);
+      if (!it){ problems.push(name); return; }
+      const basis = unitBasis(it.unit);
+      if (basis === 'weight'){ problems.push(name); return; }
+      const e = entries.get(name) || { item:name, unit:it.unit, basis, qty:0, book:it.qty };
+      e.qty += basis === 'metres' ? g.metres : g.rolls;
+      entries.set(name, e);
+    });
+    return { entries: Array.from(entries.values()).map(e => Object.assign(e, { qty: Math.round(e.qty*1000)/1000 })), unmatched, problems };
+  }
+
+  // Suggest a Tally item for a cable from its make, size, colour, cores and conductor.
+  const COLOUR_WORDS = ['red','yellow','blue','black','green','grey','gray','white','brown','orange'];
+  function itemTokens(name){
+    const lower = name.toLowerCase();
+    const raw = ' ' + lower.replace(/[^a-z0-9.\/]+/g,' ') + ' ';
+    // Cores ("4 Core", "3C", "3C x 4", "4 x 2.5") are taken out first so they are not read as the size.
+    let cores = null, rest = lower;
+    const cm = /(^|[^0-9.])(\d+)\s*(?:cores?|c)(?=x|[^a-z]|$)/.exec(lower);
+    if (cm){ cores = Number(cm[2]); rest = lower.slice(0, cm.index) + cm[1] + ' ' + lower.slice(cm.index + cm[0].length); }
+    else {
+      const xm = /(^|[^0-9.])(\d+)\s*[x×*]\s*(?=\d)/.exec(lower);
+      if (xm){ cores = Number(xm[2]); rest = lower.slice(0, xm.index) + xm[1] + ' ' + lower.slice(xm.index + xm[0].length); }
+    }
+    const nums = (rest.match(/\d+(?:\.\d+)?/g) || []).map(Number);
+    return { raw, nums, cores, colours: COLOUR_WORDS.filter(c => raw.indexOf(' '+c+' ') >= 0 || raw.indexOf(' '+c+'/') >= 0) };
+  }
+  const hasW = (t, ws) => ws.some(w => t.raw.indexOf(' '+w+' ') >= 0);
+  function scoreItem(l, t, makeUsed){
+    const size = parseFloat(l.size);
+    if (!isFinite(size) || t.nums.indexOf(size) < 0) return -99;
+    let s = 4;
+    const make = tnorm(l.make).split(/\s+/)[0];
+    // A missing make only counts against an item when Tally names other items with that make.
+    if (make){ if (hasW(t, [make])) s += 3; else if (makeUsed(make)) s -= 3; }
+    const cols = tnorm(l.colour).split(/[-\s/]+/).filter(Boolean).map(c => c === 'gray' ? 'grey' : c);
+    const itemCols = t.colours.map(c => c === 'gray' ? 'grey' : c);
+    if (cols.length){
+      if (cols.every(c => itemCols.indexOf(c) >= 0)) s += 3;
+      if (itemCols.some(c => cols.indexOf(c) < 0)) s -= 4;
+    } else if (itemCols.length) s -= 1;
+    const gc = parseFloat(l.cores);
+    if (isFinite(gc) && gc > 1){ if (t.cores === gc) s += 3; else if (t.cores) s -= 5; else s -= 1; }
+    else if (t.cores && t.cores > 1) s -= 4;
+    const cond = tnorm(l.conductor);
+    const itemAlu = hasW(t, ['al','alu','aluminium','aluminum']);
+    if (/^al/.test(cond)) s += itemAlu ? 2 : -1; else if (cond && itemAlu) s -= 3;
+    if (l.type === 'Flexible cable' && hasW(t, ['flex','flexible'])) s += 1;
+    if (l.type === 'Solar DC' && hasW(t, ['dc','solar'])) s += 2;
+    const ins = tnorm(l.insulation);
+    if (ins && hasW(t, [ins, ins + 'h'])) s += 1;
+    const len = l.pack === 'Coil' ? Number(l.origM != null ? l.origM : l.perM) : NaN;
+    if (isFinite(len) && len > 0 && t.nums.indexOf(len) >= 0) s += 1;
+    return s;
+  }
+  function suggestFor(g, toks, makeUsed){
+    let best = null, bestS = -99, second = -99;
+    toks.forEach(t => { const s = scoreItem(g.sample, t.t, makeUsed); if (s > bestS){ second = bestS; bestS = s; best = t.name; } else if (s > second) second = s; });
+    return (best && bestS >= 5 && bestS > second) ? best : '';
+  }
+
+  const ago = ms => { const s = Math.max(0, (Date.now() - ms) / 1000); if (s < 60) return 'just now'; if (s < 3600) return Math.round(s/60) + ' min ago'; if (s < 86400) return Math.round(s/3600) + ' h ago'; return new Date(ms).toLocaleDateString('en-IN', { day:'numeric', month:'short' }); };
+  const fmtQ = n => (n == null || !isFinite(n)) ? '–' : (Math.round(n*1000)/1000).toLocaleString('en-IN', { maximumFractionDigits: 3 });
+
+  async function loadTally(){
+    if (T.loading || !S.ready) return;
+    T.loading = true;
+    try {
+      const d = await api('GET', '/api/tally');
+      const firstLoad = !T.data;
+      T.data = d; T.err = '';
+      if (firstLoad || T.dirty.size === 0) applySuggestions();
+    } catch(e){
+      if (e.status === 401){ handleLoadErr(e); }
+      T.err = e.message;
+    } finally {
+      T.loading = false;
+      renderTally();
+      scheduleTally();
+    }
+  }
+  function scheduleTally(){
+    clearTimeout(T.timer);
+    const busy = T.data && T.data.jobs.some(j => j.status === 'queued' || j.status === 'running');
+    if (busy && !$('#tab-tally').hidden) T.timer = setTimeout(() => { if (document.visibilityState === 'visible') loadTally(); else scheduleTally(); }, 8000);
+  }
+  function savedMaps(){ return (T.data && T.data.maps) || []; }
+  function applySuggestions(){
+    const items = (T.data && T.data.snapshot && T.data.snapshot.items) || [];
+    if (!items.length) return;
+    const saved = new Map(savedMaps().map(m => [m.key, m.item]));
+    const toks = items.map(i => ({ name: i.name, t: itemTokens(i.name) }));
+    const makeSeen = new Map();
+    const makeUsed = m => { if (!makeSeen.has(m)) makeSeen.set(m, toks.some(x => hasW(x.t, [m]))); return makeSeen.get(m); };
+    tallyGroups().forEach(g => {
+      if (saved.has(g.key) || T.dirty.has(g.key)) return;
+      const s = suggestFor(g, toks, makeUsed);
+      if (s){ T.dirty.set(g.key, s); T.suggested.add(g.key); }
+    });
+  }
+
+  function agentState(){
+    const d = T.data;
+    if (!d) return { dot:'', title: T.err ? 'Could not load Tally sync status' : 'Checking the Tally connection…', sub: T.err || '' };
+    if (!d.configured) return { dot:'', title:'Tally sync isn’t switched on for this app yet', sub:'The sync key has to be added to the app’s settings first.' };
+    const a = d.agent;
+    if (!a || !a.lastSeen) return { dot:'', title:'Tally connector not set up yet', sub:'Book stock and posting start working once the connector checks in.', setup:true };
+    const online = Date.now() - a.lastSeen < 75*60*1000;
+    if (!online) return { dot:'bad', title:'Tally connector is offline', sub:'Last check-in ' + ago(a.lastSeen) + '. Start it on the Tally PC. Waiting jobs run when it is back.' };
+    if (!a.tallyOk) return { dot:'warn', title:'Connector is running but can’t reach TallyPrime', sub: (a.tallyError || 'Open TallyPrime and load the company.') + ' Checked ' + ago(a.tallyCheckedAt || a.lastSeen) + '.' };
+    return { dot:'ok', title:'Connected to TallyPrime' + (a.company ? ' · ' + a.company : ''), sub:'Last check-in ' + ago(a.lastSeen) + '. It checks for work within about a minute.' };
+  }
+
+  function rowNote(g, val, items){
+    const it = items.get(val);
+    if (!val) return { cls:'', text:'Not matched yet' };
+    if (!it) return { cls:'warn', text:'Not in Tally’s item list. Pick a name from the suggestions.' };
+    const basis = unitBasis(it.unit);
+    if (basis === 'weight') return { cls:'warn', text:'Tally counts this item by weight (' + it.unit + '), so it can’t be posted from a cable count.' };
+    const qty = basis === 'metres' ? g.metres : g.rolls;
+    const saved = new Map(savedMaps().map(m => [m.key, m.item])).get(g.key) || '';
+    const pre = (T.suggested.has(g.key) && val !== saved) ? 'Suggested match. ' : (val !== saved ? 'Not saved yet. ' : '');
+    return { cls: pre.indexOf('Suggested') === 0 ? 'sug' : (pre ? '' : 'ok'), text: pre + 'Counts as ' + fmtQ(qty) + ' ' + (it.unit || '') + ' (Tally unit ' + (it.unit || 'not set') + ').' };
+  }
+
+  function renderTally(){
+    T.renderedLines = S.lines;
+    const d = T.data, c = currentCount();
+    const st = agentState();
+    $('#tDot').className = 'tdot ' + (st.dot || '');
+    $('#tAgent').textContent = st.title;
+    $('#tAgentSub').textContent = st.sub || '';
+    $('#tSetup').hidden = !st.setup;
+    const snap = d && d.snapshot;
+    const items = (snap && snap.items) || [];
+    const itemMap = new Map(items.map(i => [i.name, i]));
+    if (snap){
+      const off = c && c.date && snap.asOf !== c.date ? ' This count is dated ' + prettyDate(c.date) + '; refresh to compare on the same date.' : '';
+      $('#tBook').textContent = 'Book stock as of ' + prettyDate(snap.asOf) + ' · ' + items.length + ' items · pulled ' + ago(snap.pulledAt) + '.' + off;
+    } else $('#tBook').textContent = d && d.configured ? 'No book stock from Tally yet.' : '';
+    $('#tPull').disabled = !(d && d.configured && c);
+
+    // datalist of Tally items
+    const dl = $('#tItems');
+    if (dl.dataset.n !== String(items.length) + (snap ? snap.pulledAt : '')){
+      dl.innerHTML = items.map(i => '<option value="'+esc(i.name)+'"></option>').join('');
+      dl.dataset.n = String(items.length) + (snap ? snap.pulledAt : '');
+    }
+
+    // match list
+    const groups = tallyGroups();
+    const saved = new Map(savedMaps().map(m => [m.key, m.item]));
+    const only = $('#tUnmatchedOnly').checked;
+    const shown = groups.filter(g => !only || !(T.dirty.get(g.key) || saved.get(g.key)) || !itemMap.has(T.dirty.has(g.key) ? T.dirty.get(g.key) : saved.get(g.key)));
+    $('#tFilterWrap').hidden = !groups.length || !items.length;
+    $('#tMatchList').innerHTML = shown.map(g => {
+      const lbl = groupLabel(g), val = T.dirty.has(g.key) ? T.dirty.get(g.key) : (saved.get(g.key) || '');
+      const n = rowNote(g, val, itemMap);
+      return '<li class="tm" data-key="'+esc(g.key)+'">'+
+        '<div class="tm-spec"><b>'+esc(lbl.title)+'</b><span class="t">'+esc(lbl.sub)+'</span></div>'+
+        '<div class="tm-qty">'+fmt(g.rolls)+' '+(g.rolls === 1 ? 'piece' : 'pieces')+'<br>'+fmt(g.metres)+' m</div>'+
+        '<input type="text" class="tm-in" list="tItems" autocomplete="off" spellcheck="false" placeholder="'+(items.length ? 'Search Tally items' : 'Pull book stock first')+'" aria-label="Tally item for '+esc(lbl.title)+'" data-key="'+esc(g.key)+'" value="'+esc(val)+'"'+(items.length ? '' : ' disabled')+'>'+
+        '<div class="tm-note '+n.cls+'">'+esc(n.text)+'</div></li>';
+    }).join('');
+    const empty = $('#tMatchEmpty');
+    empty.hidden = shown.length > 0;
+    empty.querySelector('p').textContent = !groups.length ? 'This count has no entries yet.' : 'Every cable in this count is matched.';
+    const matched = groups.filter(g => itemMap.has(saved.get(g.key))).length;
+    $('#tMatchCount').textContent = groups.length ? matched + ' of ' + groups.length + ' saved' : '';
+    updateSaveBtn();
+
+    // comparison (saved matches only)
+    const be = buildEntries(savedMaps());
+    // Items that differ come first, so shortages and excess are seen without scrolling.
+    const off = e => Math.abs(e.qty - (e.book || 0)) > 0.0005 ? 0 : 1;
+    const rows = be.entries.slice().sort((a,b) => off(a) - off(b) || a.item.localeCompare(b.item));
+    $('#tCmpBody').innerHTML = rows.length ? rows.map(e => {
+      const diff = Math.round((e.qty - (e.book || 0)) * 1000) / 1000;
+      const cls = diff < 0 ? 'short' : diff > 0 ? 'over' : 'even';
+      const u = '<span class="u">'+esc(e.unit || '')+'</span>';
+      return '<tr><td>'+esc(e.item)+'</td><td class="num" data-l="Book">'+fmtQ(e.book)+u+'</td><td class="num" data-l="Counted">'+fmtQ(e.qty)+u+'</td><td class="num '+cls+'" data-l="Difference">'+(diff > 0 ? '+' : '')+fmtQ(diff)+(diff ? u : '')+'</td></tr>';
+    }).join('') : '<tr><td colspan="4" style="color:var(--muted)">'+(items.length ? 'Save matches above to compare book stock with the count.' : 'Book stock appears here once the connector pulls it from Tally.')+'</td></tr>';
+    const short = rows.filter(e => e.qty < (e.book || 0)).length, over = rows.filter(e => e.qty > (e.book || 0)).length;
+    $('#tCmpNote').textContent = rows.length ? short + ' short · ' + over + ' excess' : '';
+
+    // in tally, not counted
+    const matchedNames = new Set(rows.map(e => e.item));
+    const miss = items.filter(i => i.qty > 0 && !matchedNames.has(i.name)).sort((a,b) => b.qty - a.qty);
+    $('#tMissBody').innerHTML = miss.length ? miss.slice(0, 150).map(i => '<tr><td>'+esc(i.name)+(i.parent ? '<span class="ty">'+esc(i.parent)+'</span>' : '')+'</td><td class="num">'+fmtQ(i.qty)+'<span class="u">'+esc(i.unit||'')+'</span></td></tr>').join('') +
+      (miss.length > 150 ? '<tr><td colspan="2" style="color:var(--muted)">and '+(miss.length-150)+' more</td></tr>' : '')
+      : '<tr><td colspan="2" style="color:var(--muted)">'+(items.length ? 'Nothing. Every Tally item with stock is matched.' : 'Appears once book stock is pulled.')+'</td></tr>';
+    $('#tMissCount').textContent = items.length ? miss.length + ' items with book stock' : '';
+
+    // post
+    const a = d && d.agent;
+    const godown = (a && a.godown) || 'Main Location';
+    const pending = d && d.jobs.find(j => j.type === 'post' && c && j.countId === c.id && (j.status === 'queued' || j.status === 'running'));
+    let info;
+    if (!d || !d.configured) info = 'Posting needs Tally sync to be switched on.';
+    else if (!items.length) info = 'Pull book stock first, then match the cables to Tally items.';
+    else if (!rows.length) info = 'Save at least one match to post.';
+    else info = 'Creates a Physical Stock voucher in Tally dated ' + prettyDate((c && c.date) || snap.asOf) + ' for godown "' + godown + '", setting ' + rows.length + ' item' + (rows.length === 1 ? '' : 's') + ' to the counted quantity. Tally adjusts closing stock for these items only.' +
+      (be.unmatched ? ' ' + be.unmatched + ' unmatched cable' + (be.unmatched === 1 ? ' is' : 's are') + ' left out.' : '') +
+      ' Posting this count again updates the same voucher.';
+    $('#tPostInfo').textContent = info;
+    const pb = $('#tPost');
+    pb.disabled = !(d && d.configured && rows.length && c) || !!pending;
+    if (!pb.classList.contains('armed')) pb.textContent = pending ? 'Waiting for the connector…' : 'Post Physical Stock';
+
+    // jobs
+    const jobs = (d && d.jobs) || [];
+    const statusText = { queued:'Waiting for connector', running:'Working', done:'Done', warning:'Done, check', error:'Failed', expired:'Expired', cancelled:'Cancelled' };
+    $('#tJobs').innerHTML = jobs.slice(0, 6).map(j => {
+      const r = j.result || {};
+      let extra = '';
+      if (j.type === 'post' && Array.isArray(r.checks)){
+        const badc = r.checks.filter(x => !x.ok).slice(0, 5);
+        if (badc.length) extra = '<ul>' + badc.map(x => '<li>'+esc(x.item)+': posted '+fmtQ(x.posted)+', book now '+(x.book == null ? 'not found' : fmtQ(x.book))+'</li>').join('') + '</ul>';
+      }
+      if (j.type === 'post' && Array.isArray(r.lineErrors) && r.lineErrors.length) extra += '<ul>' + r.lineErrors.slice(0, 5).map(x => '<li>'+esc(x)+'</li>').join('') + '</ul>';
+      return '<li class="tjob"><div class="tjob-h"><b>'+(j.type === 'post' ? 'Physical Stock post' : 'Book stock pull')+'</b><span class="spill '+esc(j.status)+'">'+esc(statusText[j.status] || j.status)+'</span><span class="when">'+esc(ago(j.updatedAt || j.at))+'</span></div>'+
+        (r.message ? '<div>'+esc(r.message)+'</div>' : (j.status === 'queued' ? '<div class="hint">The connector picks this up within about a minute while it is running.</div>' : ''))+
+        extra + (j.status === 'queued' ? '<div><button type="button" class="btn small" data-tcancel="'+esc(j.id)+'">Cancel</button></div>' : '') + '</li>';
+    }).join('');
+  }
+
+  function groupLabel(g){
+    const l = g.sample;
+    const len = l.pack === 'Coil' ? (l.origM != null ? l.origM : l.perM) : null;
+    return {
+      title: (l.make ? l.make + ' · ' : '') + specLabel(l),
+      sub: [l.type || 'Type not set', len ? fmt(len) + ' m coils' : (l.pack === 'Drum' ? 'Drums' : (l.pack || ''))].filter(Boolean).join(' · ')
+    };
+  }
+
+  function updateSaveBtn(){
+    const saved = new Map(savedMaps().map(m => [m.key, m.item]));
+    let n = 0;
+    T.dirty.forEach((v, k) => { if ((saved.get(k) || '') !== v) n++; });
+    const b = $('#tSave');
+    b.disabled = n === 0;
+    b.textContent = n ? 'Save ' + n + ' match' + (n === 1 ? '' : 'es') : 'Save matches';
+  }
+
+  $('#tMatchList').addEventListener('input', e => {
+    const inp = e.target.closest('.tm-in'); if (!inp) return;
+    const key = inp.dataset.key, val = inp.value.trim();
+    T.dirty.set(key, val); T.suggested.delete(key);
+    const g = tallyGroups().find(x => x.key === key);
+    const items = new Map((((T.data && T.data.snapshot) || {}).items || []).map(i => [i.name, i]));
+    if (g){ const n = rowNote(g, val, items); const el = inp.parentNode.querySelector('.tm-note'); el.className = 'tm-note ' + n.cls; el.textContent = n.text; }
+    $('#tSaveErr').hidden = true;
+    updateSaveBtn();
+  });
+  $('#tUnmatchedOnly').addEventListener('change', renderTally);
+
+  $('#tSave').addEventListener('click', async () => {
+    const saved = new Map(savedMaps().map(m => [m.key, m.item]));
+    const names = new Set((((T.data && T.data.snapshot) || {}).items || []).map(i => i.name));
+    const changes = []; const badNames = [];
+    T.dirty.forEach((v, k) => { if ((saved.get(k) || '') === v) return; if (v && !names.has(v)) badNames.push(v); else changes.push({ key:k, item:v }); });
+    const err = $('#tSaveErr');
+    if (badNames.length){ err.hidden = false; err.textContent = badNames.length + ' match' + (badNames.length === 1 ? ' isn’t' : 'es aren’t') + ' in Tally’s item list, e.g. “' + badNames[0] + '”. Pick names from the suggestions or clear them.'; return; }
+    if (!changes.length) return;
+    const b = $('#tSave'); b.disabled = true;
+    try {
+      const j = await api('POST', '/api/tally', { action:'map', maps: changes, by: S.name });
+      T.data.maps = j.maps;
+      changes.forEach(ch => { T.dirty.delete(ch.key); T.suggested.delete(ch.key); });
+      toast('Saved ' + changes.length + ' match' + (changes.length === 1 ? '' : 'es'));
+      renderTally();
+    } catch(x){ err.hidden = false; err.textContent = x.message; updateSaveBtn(); }
+  });
+
+  $('#tPull').addEventListener('click', async () => {
+    const c = currentCount(); if (!c) return;
+    const b = $('#tPull'); b.disabled = true;
+    try {
+      const j = await api('POST', '/api/tally', { action:'pull', count: c.id, by: S.name });
+      toast(j.existing ? 'A refresh is already waiting for the connector' : 'Asked the connector to refresh book stock');
+      await loadTally();
+    } catch(x){ toast(x.message); b.disabled = false; }
+  });
+
+  $('#tPost').addEventListener('click', async () => {
+    const c = currentCount(); if (!c) return;
+    const b = $('#tPost');
+    if (!b.classList.contains('armed')){
+      const n = buildEntries(savedMaps()).entries.length;
+      b.classList.add('armed'); b.textContent = 'Tap again to post ' + n + ' item' + (n === 1 ? '' : 's') + ' to Tally';
+      clearTimeout(T.armTimer);
+      T.armTimer = setTimeout(() => { b.classList.remove('armed'); renderTally(); }, 5000);
+      return;
+    }
+    clearTimeout(T.armTimer); b.classList.remove('armed'); b.disabled = true; b.textContent = 'Sending…';
+    try {
+      const j = await api('POST', '/api/tally', { action:'post', count: c.id, by: S.name });
+      toast('Sent ' + j.summary.items + ' items to the Tally connector');
+      await loadTally();
+    } catch(x){ toast(x.message); renderTally(); }
+  });
+
+  $('#tJobs').addEventListener('click', async e => {
+    const btn = e.target.closest('[data-tcancel]'); if (!btn) return;
+    btn.disabled = true;
+    try { await api('POST', '/api/tally', { action:'cancel', id: btn.dataset.tcancel }); toast('Cancelled'); }
+    catch(x){ toast(x.message); }
+    loadTally();
+  });
+
   /* ---------- tabs ---------- */
+  const TABS = ['count','entries','summary','tally'];
   function switchTab(name){
-    ['count','entries','summary'].forEach(t => {
+    TABS.forEach(t => {
       $('#tab-'+t).hidden = t !== name;
       $('#tabbtn-'+t).setAttribute('aria-selected', String(t === name));
     });
+    if (name === 'tally'){ renderTally(); loadTally(); }
   }
-  ['count','entries','summary'].forEach(t => $('#tabbtn-'+t).addEventListener('click', () => switchTab(t)));
+  TABS.forEach(t => $('#tabbtn-'+t).addEventListener('click', () => switchTab(t)));
 
   function fillDatalists(){
     const uniq = k => Array.from(new Set(S.lines.map(l => l[k]).filter(Boolean))).sort();
@@ -475,6 +820,7 @@
     renderCounts(); renderAccess();
     $('#nEntries').textContent = S.lines.length;
     renderEntries(); renderSummary(); fillDatalists(); checkDup();
+    if (!$('#tab-tally').hidden && T.data && T.renderedLines !== S.lines && !(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('tm-in'))) renderTally();
     if (S.ready && S.countsLoaded && !S.counts.length && !S.dbMissing && !S.autoOpened && $('#newCountForm').hidden){ S.autoOpened = true; $('#newCountBtn').click(); }
   }
 

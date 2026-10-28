@@ -39,6 +39,32 @@ async function ensureSchema() {
     updated_at  bigint NOT NULL,
     PRIMARY KEY (count_id, id)
   )`);
+  // Tally sync: small key/value state (connector heartbeat, book stock snapshot, signal URL)
+  await raw(`CREATE TABLE IF NOT EXISTS cst_tally_state (
+    k           text PRIMARY KEY,
+    v           jsonb NOT NULL,
+    updated_at  bigint NOT NULL
+  )`);
+  // Which Tally stock item each counted cable spec belongs to
+  await raw(`CREATE TABLE IF NOT EXISTS cst_tally_map (
+    key         text PRIMARY KEY,
+    tally_item  text NOT NULL,
+    updated_by  text NOT NULL DEFAULT '',
+    updated_at  bigint NOT NULL
+  )`);
+  // Work for the Tally PC connector: pull book stock, post Physical Stock
+  await raw(`CREATE TABLE IF NOT EXISTS cst_tally_jobs (
+    id          text PRIMARY KEY,
+    type        text NOT NULL,
+    count_id    text,
+    as_of       text NOT NULL DEFAULT '',
+    payload     jsonb NOT NULL DEFAULT '{}'::jsonb,
+    status      text NOT NULL,
+    result      jsonb,
+    created_by  text NOT NULL DEFAULT '',
+    created_at  bigint NOT NULL,
+    updated_at  bigint NOT NULL
+  )`);
 }
 
 /** Run a parameterised query, creating the tables on first use. Returns rows. */

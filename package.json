@@ -5,6 +5,7 @@
   "description": "Phone-friendly stock count form for cable drums, flexible cable and wire coils",
   "type": "module",
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0"
+    "@neondatabase/serverless": "^1.1.0",
+    "@vercel/blob": "^2.8.2"
   }
 }
